@@ -20,6 +20,14 @@ and report to **Home Assistant**.
 All behaviour lives in one file, [`esphome/co2-node-common.yaml`](esphome/co2-node-common.yaml).
 Each node file holds nothing but its name and its own API key.
 
+![Fit-check model, cover off](hardware/CO2%20Monitor_OPEN.png)
+![Fit-check model, cover lifted](hardware/CO2%20Monitor_EXPLODED.png)
+
+*KiCad 3D renders of the fit-check model in `hardware/`, not photographs: no node
+has been built yet. The standoff height is not final (see
+[Fit in the enclosure](#fit-in-the-enclosure)), and the model does not show how
+the USB cable leaves the enclosure.*
+
 ---
 
 ## The problem this is built for
@@ -65,6 +73,7 @@ three such moments, named in the header of the common file:
 esphome/    Node firmware: co2-node-common.yaml plus one thin file per node
 harness/    Host-side simulation of the watchdog lambdas, and its fault injector
 hardware/   KiCad 10 board (fit-check model) and footprint library
+  CO2 Monitor_*.png   The two 3D renders above
   3d/                 Vendor 3D models: SCD30, XIAO ESP32-C3, USB-C plug
   adafruit-scd30/     Adafruit's EAGLE files for the SCD30 breakout, with their licence
   Seeed_XIAO_ESP32C3/ KiCad redraw of the XIAO's schematic, for net checking
@@ -286,7 +295,7 @@ covered by this repository's own licences.
 | `hardware/adafruit-scd30/` | Adafruit, `Adafruit-SCD-30-PCB` | CC BY-SA 3.0 |
 | `hardware/3d/seeed-studio-xiao-esp32-c3.step` | Seeed Studio | vendor file |
 | `hardware/CO2_Monitor/CO2_Monitor.3dshapes/` | Hammond, split into base and cover | vendor file, modified |
-| `hardware/3d/usb-c-…snapshot.1/` | GrabCAD community model | **author and licence not recovered**; delete it if that matters to you |
+| `hardware/3d/usb-c-…snapshot.1/` | GrabCAD community model | **author and licence not recovered**; delete it if that matters to you. It also appears in the two renders |
 | `docs/*.pdf` | Hammond, Seeed, Sensirion, Adafruit | publisher's copyright |
 
 ## Credentials

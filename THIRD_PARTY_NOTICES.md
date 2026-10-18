@@ -79,10 +79,11 @@ could not be matched to a source, this says so.
   (HTTP 403, 2026-10-18), so **neither the author nor the licence could be
   confirmed**
 - Modifications: none
-- It is the plug shown in U1's USB-C socket in the 3D view, and nothing else
-  uses it. If you need clean provenance, delete the directory: the board, the
-  firmware and every other file are unaffected, and the plug simply stops
-  rendering.
+- It is the plug shown in U1's USB-C socket in the 3D view, and in the two
+  renders `hardware/CO2 Monitor_OPEN.png` and `CO2 Monitor_EXPLODED.png`.
+  Nothing else uses it. If you need clean provenance, delete the directory and
+  those two renders: the board, the firmware and every other file are
+  unaffected, and the plug simply stops rendering.
 
 ## Board design files
 
