@@ -1,0 +1,237 @@
+# =============================================================================
+# CO2 NODE — COMMON  —  XIAO ESP32-C3 + Adafruit SCD30 (PID 4867)
+# -----------------------------------------------------------------------------
+# Rev 1.0-draft (2026-10-18). Shared byte for byte by bedroom-co2-node.yaml and
+# family-room-co2-node.yaml, which hold only substitutions and their own API key
+# (the mmwave-node-common.yaml pattern: one copy of the behaviour, not two).
+#
+# Hardware (Bill, 2026-10-18): a spare basement-node PCB ("Temp Humidity Sensor
+# PCB"), SDA GPIO6 / SCL GPIO7, LED GPIO20. The SCD30 is the ONLY I2C device,
+# cabled from its STEMMA QT socket to PH1, the 1x04 right-angle header:
+#     pin 1 GND   pin 2 +3V3 (the SQUARE pad - not pin 1)   pin 3 SDA   pin 4 SCL
+# = QT black / red / blue / yellow. VIN MUST be 3V3: the breakout's 10K SDA/SCL
+# pull-ups (R3) go to VIN [S: the .brd netlist], so VIN sets the high level the
+# XIAO's 3V3 pins see on the bus.
+#
+# THE UNATTENDED MOMENTS THIS FILE IS BUILT FOR
+#   1. Every boot. ESPHome 2026.9.1 defaults automatic_self_calibration to TRUE
+#      (scd30 sensor.py:65) and writes it to the sensor on every boot
+#      (scd30.cpp:91). ASC assumes the sensor sees ~400 ppm air regularly; this
+#      house has no HRV/ERV and a closed bedroom never does, so ASC would walk
+#      the baseline upward unseen. It is set false here, explicitly.
+#   2. Power-up. The first reading after power-up is 0 ppm (Adafruit SCD-30
+#      guide p10, p16; ESPHome does not filter it). filter_out drops it - 0 ppm is
+#      not a possible indoor value, so dropping every 0 costs nothing.
+#   3. 03:00, the SCD30 stops answering (QT crimp, bus hang). HA must NOT keep
+#      showing the last good number. After 4 missed 60 s reads the CO2 entity
+#      goes unknown (NaN) and "CO2 Sensor Fault" turns on. At 15 min the node
+#      reboots to re-run SCD30 setup - at most 3 times in a row (the counter
+#      survives the reboot), then it stays up and keeps reporting the fault, so
+#      a dead cable cannot become a reboot loop that hides it.
+#
+# Calibration: with ASC off, the ONLY path is forced recalibration (the
+# forced_recalibration API action below), done outdoors by hand.
+# =============================================================================
+
+substitutions:
+  node_name: co2-node
+  friendly: CO2 Node
+  fw_version: "1.0-draft"
+
+esphome:
+  name: ${node_name}
+  friendly_name: ${friendly}
+  # Version floor: compiled on 2026.9.1 (the add-on's installed version on
+  # 2026-10-18) and on nothing older. Raise it after a re-compile, never as a
+  # side effect of an upgrade.
+  min_version: 2026.9.1
+  project:
+    name: "wkcollis1.co2-node"
+    version: ${fw_version}
+  on_boot:
+    priority: -100
+    then:
+      - output.turn_off: status_led_out        # the box is opaque; the LED stays dark
+      - lambda: |-
+          // A clean boot starts clear; a recovery reboot carries its fault across
+          // (globals are restored in setup, before this priority -100 trigger).
+          id(co2_fault).publish_state(id(g_stale_reboots) > 0);
+          id(g_last_co2_ms) = millis();        // the stale clock starts at boot
+
+esp32:
+  board: seeed_xiao_esp32c3
+  framework:
+    type: esp-idf
+
+# Logging over native USB Serial/JTAG (frees UART0/GPIO20 for the LED), as
+# basement-th-node. First flash over USB, then OTA.
+logger:
+  level: INFO
+  hardware_uart: USB_SERIAL_JTAG
+
+debug:
+  update_interval: 60s   # feeds the free-heap and loop-time diagnostics
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  power_save_mode: none
+  reboot_timeout: 15min
+  ap:
+    ssid: "${friendly} Fallback"
+    password: !secret ap_password
+
+captive_portal:
+
+api:
+  reboot_timeout: 0s     # HA being down must not reboot the node (as basement-th-node)
+  actions:
+    # Forced recalibration. Run it OUTDOORS (or at an open window in steady air),
+    # after the node has been powered and reading there for several minutes,
+    # with the outdoor reference (~420 ppm). Never from an automation: a
+    # reference given indoors bakes the room's excess into every later reading.
+    - action: forced_recalibration
+      variables:
+        reference_ppm: int
+      then:
+        - if:
+            condition:
+              lambda: 'return reference_ppm >= 400 && reference_ppm <= 2000;'
+            then:
+              - scd30.force_recalibration_with_reference:
+                  id: scd30_sensor
+                  value: !lambda 'return reference_ppm;'
+              - logger.log:
+                  level: WARN
+                  format: "FRC applied: reference %d ppm"
+                  args: ['(int) reference_ppm']   # API int is int32_t = long on the C3
+            else:
+              - logger.log:
+                  level: ERROR
+                  format: "FRC refused: %d ppm is outside 400-2000"
+                  args: ['(int) reference_ppm']   # API int is int32_t = long on the C3
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+i2c:
+  sda: GPIO6          # D4
+  scl: GPIO7          # D5
+  frequency: 50kHz    # Adafruit SCD-30 guide p15-16
+  scan: true
+  # As basement-th-node. [I] scd30.cpp's own comment says the SCD30 can stretch
+  # SCL up to 150 ms; if bring-up logs show I2C read errors, raise this first.
+  timeout: 50ms
+
+globals:
+  - id: g_last_co2_ms
+    type: uint32_t
+    restore_value: false
+    initial_value: '0'
+  - id: g_stale_reboots
+    type: int
+    restore_value: true     # must survive the reboot it counts
+    initial_value: '0'
+
+output:
+  - platform: gpio
+    pin: GPIO20         # D7 (UART0 RX; freed because logging is over USB)
+    id: status_led_out
+
+button:
+  - platform: restart
+    name: "Node Restart"
+    entity_category: config
+
+sensor:
+  - platform: scd30
+    id: scd30_sensor
+    address: 0x61
+    automatic_self_calibration: false   # moment 1 above
+    altitude_compensation: 157m         # ~515 ft (Bill) x 0.3048 = 156.97 m
+    update_interval: 60s
+    # No temperature: or humidity: here, deliberately. The SCD30's T/RH are
+    # self-heated, and the room already has its own T/RH sources (R10).
+    co2:
+      id: co2
+      name: "CO2"
+      accuracy_decimals: 0
+      filters:
+        - filter_out: 0.0                # moment 2 above
+      on_value:
+        then:
+          - lambda: |-
+              if (std::isnan(x)) return;   // the watchdog's own NaN must not reset the watchdog
+              id(g_last_co2_ms) = millis();
+              if (id(g_stale_reboots) != 0) id(g_stale_reboots) = 0;
+              if (id(co2_fault).state) id(co2_fault).publish_state(false);
+
+  - platform: template
+    name: "CO2 Stale Reboots"
+    entity_category: diagnostic
+    accuracy_decimals: 0
+    update_interval: 60s
+    lambda: 'return id(g_stale_reboots);'
+
+  - platform: wifi_signal
+    name: "Node WiFi Signal"
+    update_interval: 60s
+    entity_category: diagnostic
+  - platform: uptime
+    name: "Node Uptime"
+    update_interval: 60s
+    entity_category: diagnostic
+  - platform: debug
+    free:
+      name: "Node Free Heap"
+      entity_category: diagnostic
+    loop_time:
+      name: "Node Loop Time"
+      entity_category: diagnostic
+
+text_sensor:
+  - platform: version
+    name: "Node ESPHome Version"
+    entity_category: diagnostic
+  - platform: debug
+    reset_reason:
+      name: "Node Reset Reason"
+      entity_category: diagnostic
+
+binary_sensor:
+  - platform: status
+    name: "Node Status"
+  - platform: template
+    id: co2_fault
+    name: "CO2 Sensor Fault"
+    device_class: problem
+    entity_category: diagnostic
+
+interval:
+  # Moment 3 above. 240 s: 4 missed 60 s reads raise the fault for certain (3 can,
+  # if a tick lands just ahead of the 4th read). The SCD30 measures on its own
+  # 60 s clock (scd30.cpp:68), so after boot the dropped 0 ppm read comes at
+  # ~60 s and the first real one at ~120 s. [I] that leaves ~120 s of margin;
+  # falsified if a boot with a working sensor logs "no SCD30 reading" (a brief
+  # fault, no reboot - the reboot needs 900 s).
+  - interval: 30s
+    then:
+      - lambda: |-
+          const uint32_t age = millis() - id(g_last_co2_ms);   // unsigned: survives the 49-day wrap
+          if (age < 240000) return;
+          if (!id(co2_fault).state) {
+            id(co2_fault).publish_state(true);
+            ESP_LOGW("co2", "no SCD30 reading for %u s", (unsigned) (age / 1000));
+          }
+          if (!std::isnan(id(co2).state)) id(co2).publish_state(NAN);
+          if (age >= 900000 && id(g_stale_reboots) < 3) {
+            id(g_stale_reboots) += 1;
+            ESP_LOGE("co2", "stale %u s: recovery reboot %d of 3", (unsigned) (age / 1000), id(g_stale_reboots));
+            // safe_reboot() alone persists the count [2026.9.1 source]: shutdown hooks run
+            // lowest priority first, so the global (HARDWARE) stores itself before the
+            // preferences syncer (BUS) flushes NVS. (The first draft, 2026-10-18, called
+            // global_preferences->sync() here first - a no-op for this count, because the
+            // global had not stored the new value yet. Removed, recorded per R13.)
+            App.safe_reboot();
+          }

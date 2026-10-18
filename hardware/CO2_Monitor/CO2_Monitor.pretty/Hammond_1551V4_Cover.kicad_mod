@@ -1,0 +1,152 @@
+(footprint "Hammond_1551V4_Cover"
+	(version 20260206)
+	(generator "pcbnew")
+	(generator_version "10.0")
+	(layer "F.Cu")
+	(descr "Hammond 1551V4 (BK/WH/TBU) 80 x 80 x 20.3 mm ABS enclosure, COVER. 3D model and F.Fab outline only, no pads. Mates with Hammond_1551V4_Base placed at the same position and rotation; keep the two model z offsets equal (-1.6 for a 1.6 mm board on the bosses). Drawing REV 31.08.2023; model = 1551V4BK.stp split per part")
+	(tags "Hammond 1551V4 1551V4BK enclosure cover lid")
+	(property "Reference" "REF**"
+		(at 0 -41.5 0)
+		(layer "F.Fab")
+		(uuid "6fcd3bce-7760-5af4-8c16-f763f834adc8")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Value" "Hammond_1551V4_Cover"
+		(at 0 41.5 0)
+		(layer "F.Fab")
+		(uuid "2e8e9180-9b2d-51e8-956a-005b1514a6ea")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Datasheet" "https://www.hammfg.com/part/1551V4BK"
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "536c009a-0b3f-5188-a61e-83d7879e4ce4")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Description" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "f4eb7837-1941-59b4-9903-a9e99cfc1ec4")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(attr board_only exclude_from_pos_files exclude_from_bom)
+	(duplicate_pad_numbers_are_jumpers no)
+	(fp_line
+		(start -40 30)
+		(end -40 -30)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "677ce2d2-2b8f-56f3-bc94-21fb58c2bc1f")
+	)
+	(fp_line
+		(start -30 -40)
+		(end 30 -40)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "3ecfacf3-6542-5266-a22c-52b18d1111a3")
+	)
+	(fp_line
+		(start 30 40)
+		(end -30 40)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "33512165-7b73-55f6-93c8-dae4ef2770f5")
+	)
+	(fp_line
+		(start 40 -30)
+		(end 40 30)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "92243e1b-173b-57cd-bd65-9db6810b6532")
+	)
+	(fp_arc
+		(start -40 -30)
+		(mid -37.0711 -37.0711)
+		(end -30 -40)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "b99ca5c6-8bcd-533e-b6b9-b440b609e41f")
+	)
+	(fp_arc
+		(start -30 40)
+		(mid -37.0711 37.0711)
+		(end -40 30)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "97c90d65-aa25-5722-9167-971c50e41ada")
+	)
+	(fp_arc
+		(start 30 -40)
+		(mid 37.0711 -37.0711)
+		(end 40 -30)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "c5fd15ce-ad3b-5ded-b790-16c6c4bb3a32")
+	)
+	(fp_arc
+		(start 40 30)
+		(mid 37.0711 37.0711)
+		(end 30 40)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "0f7d55ae-e1cc-50aa-969f-46701dd9a61d")
+	)
+	(embedded_fonts no)
+	(model "${KIPRJMOD}/CO2_Monitor.3dshapes/Hammond_1551V4_Cover.step"
+		(offset
+			(xyz 0 0 -1.6)
+		)
+		(scale
+			(xyz 1 1 1)
+		)
+		(rotate
+			(xyz 0 0 0)
+		)
+	)
+)

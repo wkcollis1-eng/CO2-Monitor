@@ -1,0 +1,230 @@
+// sim.cpp.in - host test of the CO2 node watchdog (co2-node-common.yaml).
+// gen.py pastes the on_boot, co2 on_value and interval lambdas in VERBATIM at the
+// marker comments; nothing below retypes firmware logic (R10). The stubs model
+// ESPHome 2026.9.1 behaviour as read from its source on 2026-10-18:
+//   - filter_out: 0.0 at accuracy_decimals 0 drops any value rounding to 0 and
+//     passes NaN                                        [sensor/filter.cpp:219-240]
+//   - the SCD30 publishes only when the sensor has data; a failed read
+//     publishes nothing; a failed setup never reads    [scd30.cpp:68,110-113,153-157]
+//   - safe_reboot persists restore_value globals: the global (HARDWARE) stores
+//     in on_shutdown before the syncer (BUS) flushes    [core/application.cpp:59-66,278-285]
+//   - the syncer also flushes every 60 s                [preferences/__init__.py:19]
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+#include <cstdio>
+#include <functional>
+#include <vector>
+
+static uint32_t now_ms = 0;
+static uint32_t millis() { return now_ms; }
+static double wall_s = 0;  // simulated wall-clock seconds, for the trace
+static bool verbose = false;
+#define ESP_LOGW(tag, fmt, ...) do { if (verbose) std::printf("      %8.1f [W][%s] " fmt "\n", wall_s, tag, ##__VA_ARGS__); } while (0)
+#define ESP_LOGE(tag, fmt, ...) do { if (verbose) std::printf("      %8.1f [E][%s] " fmt "\n", wall_s, tag, ##__VA_ARGS__); } while (0)
+
+struct Reboot {};
+struct AppStub { void safe_reboot() { throw Reboot{}; } };
+static AppStub App;
+struct PrefsStub { void sync() {} };
+static PrefsStub prefs_stub;
+[[maybe_unused]] static PrefsStub *global_preferences = &prefs_stub;  // unused since the R13 fix; kept so a lambda calling it still compiles
+
+struct Trace {
+  std::vector<double> boot_at, reboot_at, fault_on, fault_off, nan_at, real_at;
+};
+static Trace *T = nullptr;
+
+struct BinarySensor { bool state = false; void publish_state(bool s); };
+struct Sensor { float state = NAN; void publish_state(float v); };
+
+static BinarySensor co2_fault;
+static Sensor co2;
+static uint32_t g_last_co2_ms = 0;  // globals: restore_value false
+static int g_stale_reboots = 0;     // globals: restore_value true
+#define id(x) (x)
+
+static void on_value_(float x) {
+/*ON_VALUE*/
+}
+
+static void on_boot_() {
+/*ON_BOOT*/
+}
+
+static void tick_() {
+/*TICK*/
+}
+
+void BinarySensor::publish_state(bool s) {
+  if (s != this->state) (s ? T->fault_on : T->fault_off).push_back(wall_s);
+  this->state = s;
+}
+void Sensor::publish_state(float v) {
+  if (!std::isnan(v) && std::roundf(v) == 0.0f) return;  // filter_out: 0.0
+  if (std::isnan(v) && !std::isnan(this->state)) T->nan_at.push_back(wall_s);
+  this->state = v;
+  on_value_(v);
+}
+
+struct Scenario {
+  const char *name;
+  double hours;
+  std::function<bool(double)> alive;  // is the SCD30 answering at wall time s?
+  bool power_loss = true;             // a dead spell needs a re-setup (reboot) to read again
+  uint32_t first_meas_ms = 61000;     // SCD30 start -> first (0 ppm) measurement
+  uint32_t tick_phase_ms = 0;
+  uint32_t millis_at_boot = 0;        // to cross the 32-bit millis() wrap
+};
+struct Result { Trace t; bool fault = false, nan = false; int count = 0, nvs = 0; };
+
+static Result run(const Scenario &sc) {
+  Result r;
+  T = &r.t;
+  int nvs = 0;     // the flash copy of g_stale_reboots
+  double wall0 = 0;
+  const double end_s = sc.hours * 3600.0;
+  for (;;) {
+    co2_fault = BinarySensor{};
+    co2 = Sensor{};
+    g_last_co2_ms = 0;
+    g_stale_reboots = nvs;
+    r.t.boot_at.push_back(wall0);
+    auto set_now = [&](uint32_t boot_ms) { now_ms = sc.millis_at_boot + boot_ms; wall_s = wall0 + boot_ms / 1000.0; };
+    const uint32_t scd_setup = 1000, on_boot_at = 1500;
+    const bool setup_ok = sc.alive(wall0 + scd_setup / 1000.0);
+    bool lost = false;
+    int k = 0;
+    uint32_t next_meas = scd_setup + sc.first_meas_ms;
+    uint32_t next_tick = scd_setup + 30000 + sc.tick_phase_ms;
+    uint32_t next_sync = 60000;
+    set_now(on_boot_at);
+    on_boot_();
+    try {
+      for (;;) {
+        const uint32_t t = std::min({next_meas, next_tick, next_sync});
+        set_now(t);
+        if (wall_s > end_s) {
+          r.fault = co2_fault.state; r.nan = std::isnan(co2.state); r.count = g_stale_reboots; r.nvs = nvs;
+          return r;
+        }
+        if (t == next_meas) {
+          const bool up = sc.alive(wall_s);
+          if (!up && sc.power_loss) lost = true;
+          if (setup_ok && up && !lost) {
+            co2.publish_state(k == 0 ? 0.0f : 650.0f);
+            if (k > 0) r.t.real_at.push_back(wall_s);
+          }
+          k++;
+          next_meas += 60000;
+        } else if (t == next_tick) {
+          tick_();
+          next_tick += 30000;
+        } else {
+          nvs = g_stale_reboots;
+          next_sync += 60000;
+        }
+      }
+    } catch (Reboot &) {
+      nvs = g_stale_reboots;  // shutdown order: the global stores, then the syncer flushes
+      r.t.reboot_at.push_back(wall_s);
+      wall0 = wall_s + 5.0;   // ~5 s to come back up
+    }
+  }
+}
+
+static int checks = 0, failed = 0;
+static const char *cur = "";
+#define CHECK(cond, ...) do { checks++; if (!(cond)) { failed++; std::printf("  FAIL [%s] ", cur); std::printf(__VA_ARGS__); std::printf("\n"); } } while (0)
+static bool within(double v, double lo, double hi) { return v >= lo && v <= hi; }
+static double first_or(const std::vector<double> &v, double d) { return v.empty() ? d : v.front(); }
+static double last_before(const std::vector<double> &v, double t) {
+  double best = -1;
+  for (double x : v) if (x < t) best = x;
+  return best;
+}
+static void summary(const Result &r) {
+  std::printf("  %-44s reboots %zu  fault_on %zu  fault_off %zu  end: fault %d nan %d count %d\n", cur,
+              r.t.reboot_at.size(), r.t.fault_on.size(), r.t.fault_off.size(), r.fault, r.nan, r.count);
+}
+
+int main(int argc, char **) {
+  verbose = argc > 1;
+  const auto always = [](double) { return true; };
+  const auto never = [](double) { return false; };
+  const auto dies_at = [](double d) { return [d](double s) { return s < d; }; };
+  const auto out_between = [](double a, double b) { return [a, b](double s) { return s < a || s >= b; }; };
+
+  // S1 healthy, every SCD30 first-sample delay and tick phase: never a fault, never a reboot
+  for (uint32_t first : {60500u, 61000u, 120000u, 175000u})
+    for (uint32_t ph : {0u, 7000u, 15000u, 29999u}) {
+      Scenario sc{"S1 healthy", 6, always}; sc.first_meas_ms = first; sc.tick_phase_ms = ph;
+      cur = "S1 healthy";
+      Result r = run(sc);
+      CHECK(r.t.reboot_at.empty() && r.t.fault_on.empty() && !r.nan && r.count == 0,
+            "first %u ph %u: reboots %zu fault_on %zu nan %d", first, ph, r.t.reboot_at.size(), r.t.fault_on.size(), r.nan);
+      if (first == 61000u && ph == 0u) summary(r);
+    }
+
+  { // S1b the [I] boot margin's edge: first real read > 240 s after on_boot -> brief fault, no reboot
+    Scenario sc{"S1b first real read at ~306 s", 6, always}; sc.first_meas_ms = 245000;
+    cur = sc.name; Result r = run(sc); summary(r);
+    CHECK(r.t.fault_on.size() == 1 && r.t.fault_off.size() == 1 && r.t.reboot_at.empty() && !r.nan, "boundary not as modelled");
+  }
+
+  { // S2 cable lost at 30 min, never back: fault in [L+240, L+270], reboot 1 at L+900..930, exactly 3 reboots
+    Scenario sc{"S2 dies 30 min, never back", 6, dies_at(1800)};
+    cur = sc.name; Result r = run(sc); summary(r);
+    const double L = last_before(r.t.real_at, 1800);
+    CHECK(within(first_or(r.t.fault_on, -1) - L, 240, 270), "fault %.1f s after last read", first_or(r.t.fault_on, -1) - L);
+    CHECK(within(first_or(r.t.nan_at, -1) - L, 240, 270), "NaN %.1f s after last read", first_or(r.t.nan_at, -1) - L);
+    CHECK(r.t.reboot_at.size() == 3 && r.t.boot_at.size() == 4, "reboots %zu (want 3)", r.t.reboot_at.size());
+    if (r.t.reboot_at.size() >= 1) CHECK(within(r.t.reboot_at[0] - L, 900, 930), "reboot 1 at L+%.1f", r.t.reboot_at[0] - L);
+    for (size_t i = 1; i < r.t.reboot_at.size() && i < r.t.boot_at.size(); i++)
+      CHECK(within(r.t.reboot_at[i] - r.t.boot_at[i], 901.5, 931.5), "reboot %zu at boot+%.1f", i + 1, r.t.reboot_at[i] - r.t.boot_at[i]);
+    for (size_t i = 1; i < r.t.boot_at.size(); i++) {  // every recovery boot shows the fault from on_boot
+      bool seen = false;
+      for (double f : r.t.fault_on) seen |= within(f - r.t.boot_at[i], 1.4, 1.6);
+      CHECK(seen, "boot %zu did not carry the fault", i + 1);
+    }
+    CHECK(r.fault && r.nan && r.count == 3 && r.nvs == 3, "end state fault %d nan %d count %d nvs %d", r.fault, r.nan, r.count, r.nvs);
+  }
+
+  { // S3 cable lost at 30 min, back at 50 min: the 2nd recovery reboot re-runs setup, count and fault clear
+    Scenario sc{"S3 dies 30 min, back 50 min", 6, out_between(1800, 3000)};
+    cur = sc.name; Result r = run(sc); summary(r);
+    CHECK(r.t.reboot_at.size() == 2, "reboots %zu (want 2)", r.t.reboot_at.size());
+    CHECK(!r.fault && !r.nan && r.count == 0 && r.nvs == 0, "end state fault %d nan %d count %d nvs %d", r.fault, r.nan, r.count, r.nvs);
+  }
+
+  { // S4 bus glitch of 2 reads: nothing
+    Scenario sc{"S4 glitch 1800-1900 s (2 reads)", 3, out_between(1800, 1900)}; sc.power_loss = false;
+    cur = sc.name; Result r = run(sc); summary(r);
+    CHECK(r.t.fault_on.empty() && r.t.reboot_at.empty() && !r.nan, "glitch raised a fault");
+  }
+
+  { // S5 bus glitch of 10 min, readings resume by themselves: fault on then off, no reboot
+    Scenario sc{"S5 glitch 1800-2400 s, self-recovers", 3, out_between(1800, 2400)}; sc.power_loss = false;
+    cur = sc.name; Result r = run(sc); summary(r);
+    CHECK(r.t.fault_on.size() == 1 && r.t.fault_off.size() == 1 && r.t.reboot_at.empty() && !r.nan && r.count == 0, "not on/off/no-reboot");
+  }
+
+  { // S6 healthy across the 32-bit millis() wrap: nothing
+    Scenario sc{"S6 healthy across millis wrap", 3, always}; sc.millis_at_boot = 0xFFFFFFFFu - 100000u;
+    cur = sc.name; Result r = run(sc); summary(r);
+    CHECK(r.t.fault_on.empty() && r.t.reboot_at.empty() && !r.nan, "wrap raised a fault");
+  }
+
+  { // S7 no sensor from power-up: fault by boot+271.5, reboot at boot+901.5..931.5, 3 then stop
+    Scenario sc{"S7 dead from power-up", 6, never};
+    cur = sc.name; Result r = run(sc); summary(r);
+    CHECK(within(first_or(r.t.fault_on, -1), 241.5, 271.5), "first fault at %.1f", first_or(r.t.fault_on, -1));
+    CHECK(r.t.reboot_at.size() == 3 && within(first_or(r.t.reboot_at, -1), 901.5, 931.5), "reboots %zu, first at %.1f",
+          r.t.reboot_at.size(), first_or(r.t.reboot_at, -1));
+    CHECK(r.fault && r.nan && r.count == 3, "end state");
+  }
+
+  if (failed) std::printf("RESULT: FAIL (%d of %d checks failed)\n", failed, checks);
+  else std::printf("RESULT: PASS (%d checks)\n", checks);
+  return failed ? 1 : 0;
+}
