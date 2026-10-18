@@ -24,8 +24,12 @@ repos:
         args: [--unsafe]
       - id: check-added-large-files
         # 5 MB: the vendor STEP models and datasheets run to 4.2 MB (the USB-C
-        # cable STEP is 4,254,159 bytes, 2026-10-18). Anything bigger than that
+        # cable STEP is 4,253,334 bytes, 2026-10-18). Anything bigger than that
         # should be a decision, not an accident.
+        # Corrected 2026-10-18: this first said 4,254,159 bytes, which is the size
+        # of the GrabCAD snapshot .zip the STEP came in (not carried into this
+        # repo, its only member being the same STEP), not the STEP. The limit is
+        # unaffected: the largest tracked file is the STEP, at 4,253,334.
         args: ['--maxkb=5120']
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
