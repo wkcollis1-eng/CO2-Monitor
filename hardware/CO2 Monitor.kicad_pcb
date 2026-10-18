@@ -869,7 +869,7 @@
 				(xyz -180 -0 -90)
 			)
 		)
-		(model "C:/Users/wkcol/OneDrive/Desktop/Seeed Xiao ESP32-c3/seeed-studio-xiao-esp32-c3.step"
+		(model "${KIPRJMOD}/3d/seeed-studio-xiao-esp32-c3.step"
 			(offset
 				(xyz 5.9 -13.75 2.5)
 			)
@@ -928,7 +928,7 @@
 				(xyz -0 -0 -90)
 			)
 		)
-		(model "C:/Users/wkcol/OneDrive/Desktop/CO2 Monitor/usb-c-type-c-male-connector-cable-1.snapshot.1/USB C Male connector cable.STEP"
+		(model "${KIPRJMOD}/3d/usb-c-type-c-male-connector-cable-1.snapshot.1/USB C Male connector cable.STEP"
 			(offset
 				(xyz 35.5 -7.5 5)
 			)
@@ -1459,7 +1459,7 @@
 				(xyz 0 0 0)
 			)
 		)
-		(model "C:/Users/wkcol/OneDrive/Desktop/CO2 Monitor/4867 Adafruit SCD30.step"
+		(model "${KIPRJMOD}/3d/4867 Adafruit SCD30.step"
 			(offset
 				(xyz -48.25 -12.75 0)
 			)
@@ -1470,7 +1470,7 @@
 				(xyz -0 -0 -0)
 			)
 		)
-		(model "C:/Users/wkcol/OneDrive/Desktop/CO2 Monitor/KiCad/CO2_Monitor/CO2_Monitor.3dshapes/Hammond_1551V4_Base.step"
+		(model "${KIPRJMOD}/CO2_Monitor/CO2_Monitor.3dshapes/Hammond_1551V4_Base.step"
 			(offset
 				(xyz -16.25 -22 -2)
 			)
@@ -1481,7 +1481,7 @@
 				(xyz -0 -0 -0)
 			)
 		)
-		(model "C:/Users/wkcol/OneDrive/Desktop/CO2 Monitor/KiCad/CO2_Monitor/CO2_Monitor.3dshapes/Hammond_1551V4_Cover.step"
+		(model "${KIPRJMOD}/CO2_Monitor/CO2_Monitor.3dshapes/Hammond_1551V4_Cover.step"
 			(hide yes)
 			(offset
 				(xyz -16.5 21.5 0)
