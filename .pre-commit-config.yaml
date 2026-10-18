@@ -1,0 +1,45 @@
+# This file is managed by the Tools repo. Copy to other repos via .\install-precommit-all.ps1
+# Repo-local changes (2026-10-18): --maxkb on check-added-large-files, and
+# hardware/ + docs/ excluded from the two whitespace fixers. The installer only
+# distributes to repos that have no config, so these survive it.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      # hardware/ and docs/ hold KiCad output and vendor files (STEP, EAGLE,
+      # PDF), kept byte-for-byte as their tools and publishers wrote them, so a
+      # vendor file can still be matched to its upstream blob. KiCad writes
+      # Seeed_XIAO_ESP32C3.kicad_pro with no final newline; "fixing" it would
+      # leave the working copy one byte off on every save.
+      - id: trailing-whitespace
+        exclude: "^(hardware|docs)/"
+      - id: end-of-file-fixer
+        exclude: "^(hardware|docs)/"
+      # --unsafe parses YAML for syntax but does not resolve custom tags.
+      # Required for Home Assistant and ESPHome configs, which use !secret,
+      # !include and !lambda - a plain safe_load fails on all of them with
+      # "could not determine a constructor for the tag". Syntax errors are
+      # still caught; only tag construction is skipped.
+      - id: check-yaml
+        args: [--unsafe]
+      - id: check-added-large-files
+        # 5 MB: the vendor STEP models and datasheets run to 4.2 MB (the USB-C
+        # cable STEP is 4,254,159 bytes, 2026-10-18). Anything bigger than that
+        # should be a decision, not an accident.
+        args: ['--maxkb=5120']
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.9
+    hooks:
+      - id: ruff
+        args: [ --fix ]
+      - id: ruff-format
+
+  # Secret scanning. Reads .gitleaks.toml from the repo root, which extends
+  # the default rules - the defaults alone were measured against the 2026
+  # credential leak and missed the Wi-Fi PSK and OTA password.
+  # install-precommit-all.ps1 distributes that file alongside this one.
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks

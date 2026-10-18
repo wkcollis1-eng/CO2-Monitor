@@ -1,0 +1,59 @@
+# =============================================================================
+# CO2 Monitor — .gitignore
+# -----------------------------------------------------------------------------
+# Written 2026-10-18 when this project first went into version control.
+# =============================================================================
+
+# ---- CREDENTIALS -----------------------------------------------------------
+# The firmware resolves every credential through !secret. The real values live
+# in the Home Assistant config's esphome/secrets.yaml, NOT in this repo. The
+# esphome/secrets.yaml kept beside the firmware in a working copy holds dummy
+# values so the configs compile; it is ignored all the same, because a file
+# named secrets.yaml that is "only dummies" is one paste away from not being.
+# A credential committed once survives in history, every clone and every fork.
+secrets.yaml
+secrets.yml
+*.secret
+*.key
+
+# ---- ESPHome build output ----------------------------------------------------
+.esphome/
+# Compile logs are point-in-time build output; the result they record is in
+# README.md (Status), with the config_hash that identifies each build.
+*.log
+
+# ---- Watchdog harness build output -----------------------------------------
+# gen.py regenerates sim.cpp from sim.cpp.in + co2-node-common.yaml on every
+# run, and faults.py writes its fault copies and binaries to work/. Committing
+# them would be a second copy of the firmware lambdas that could drift (R10).
+harness/sim.cpp
+harness/work/
+*.exe
+*.pdb
+*.obj
+*.ilk
+
+# ---- KiCad generated / local ----------------------------------------------
+*-backups/
+# Per-user local project state — window layout, last-opened sheet. Not design.
+*.kicad_prl
+*~
+*.bak
+*.bck
+*.kicad_pcb-bak
+*.kicad_sch-bak
+*.lck
+fp-info-cache
+\#auto_saved_files#
+
+# ---- Python ----------------------------------------------------------------
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.ruff_cache/
+
+# ---- OS --------------------------------------------------------------------
+Thumbs.db
+desktop.ini
+.DS_Store
