@@ -56,15 +56,17 @@ three such moments, named in the header of the common file:
    reboots to re-run the sensor setup, **at most three times in a row**. The
    counter survives the reboot, so a dead cable cannot turn into a reboot loop that
    hides it. After the third reboot the node stays up and keeps reporting the fault.
+   (1.4: CO2 (2 s) goes unknown at 240 s; CO2, the 1-minute mean, and the SCD30
+   temperature and humidity follow at the end of their minute, by 330 s.)
 
 ## Status
 
 | | |
 |---|---|
-| Firmware | **Rev 1.0-draft**, 2026-10-18 |
-| Compile | Both nodes compiled on **ESPHome 2026.9.1** with 0 compiler warnings and 0 errors [M: build logs, 2026-10-18; config_hash `0xa7e479a5` bedroom, `0xc9ec59d4` family room]. ESPHome's own advisory that an OTA password costs about 3.5 KB of flash prints for both, and is accepted |
-| Watchdog | Host-simulated: the clean config passes all 35 checks, and each of the 5 injected faults is caught [M: `harness/faults.py`, 2026-10-18]. See [The watchdog harness](#the-watchdog-harness) for what that does and does not prove |
-| Deployment | **Not deployed.** The firmware is not yet in the Home Assistant config |
+| Firmware | **Rev 1.4-draft**, 2026-10-27 (1.0-draft 2026-10-18). On the bedroom node since 2026-10-27 18:13 |
+| Compile | Bedroom node, firmware 1.4: compiled on **ESPHome 2026.10.0** with 0 compiler warnings and 0 errors [M: build log, 2026-10-27; config_hash `0x664528e8`]; a deliberately broken lambda fails the same build, so the compile gate can fail. 1.0: both nodes on ESPHome 2026.9.1, 0 warnings, 0 errors [M: build logs, 2026-10-18; config_hash `0xa7e479a5` bedroom, `0xc9ec59d4` family room]. ESPHome's own advisory that an OTA password costs about 3.5 KB of flash prints for both, and is accepted |
+| Watchdog | Host-simulated: the clean config passes all 224 checks, and each of the 11 injected faults is caught [M: `harness/faults.py`, 2026-10-27, firmware 1.4; 35 checks and 5 faults on 2026-10-18]. See [The watchdog harness](#the-watchdog-harness) for what that does and does not prove |
+| Deployment | Bedroom node: in Home Assistant since 2026-10-27, firmware 1.4 [M: config_hash `0x664528e8`, ESPHome 2026.10.0, 0 warnings]. Family-room node: not built |
 | Hardware | **No new PCB.** The carrier is an existing ESP32-C3 sensor-node board. The KiCad file here is that board, unchanged, with the SCD30 and the enclosure placed on it for a 3D fit check |
 
 ## Repository layout
@@ -144,15 +146,16 @@ reaches both.
 
 | Entity | Kind | Notes |
 |---|---|---|
-| CO2 | sensor, ppm | Every 60 s. **Unknown** when the sensor has been silent for 240 s |
+| CO2 | sensor, ppm | The 1-minute mean of CO2 (2 s), sent once a minute (1.4; to 1.3, the 60 s reading). **Unknown** at the end of the minute in which CO2 (2 s) goes unknown |
+| CO2 (2 s) | sensor, ppm | Every reading, every 2 s. **Unknown** when the sensor has been silent for 240 s. Added in 1.4. Up to 43,200 states a day in the recorder [D: 86,400 / 2]; fewer when readings repeat, since HA records only changes |
 | CO2 Sensor Fault | binary_sensor, problem | On from 240 s of silence until the next good reading |
 | CO2 Stale Reboots | sensor, diagnostic | Recovery reboots in a row, 0 to 3. Cleared by a good reading |
 | Node Status, WiFi Signal, Uptime, Free Heap, Loop Time | diagnostics | |
 | Node ESPHome Version, Reset Reason | diagnostics | |
 | Node Restart | button | |
 | LED Test | button, config | Strobes the LED for 15 s, to prove the LED and that it can be seen. Added in 1.1 |
-| Calibration | text, diagnostic | `60 s rate`, or the calibration window's `wait` / `ready`, plus the last result. Added in 1.2 |
-| SCD30 Temperature (self-heated), SCD30 Humidity (self-heated) | sensor, diagnostic | The SCD30's own on-board sensor; it reads warm and dry, so it is not the room's T/RH. **Unknown** with CO2 when the sensor is silent. Added in 1.3 |
+| Calibration | text, diagnostic | 1.4: `2 s rate; FRC wait (2 min after boot)`, then `2 s rate; FRC ready`, plus the last result; sent only when it changes. (1.2-1.3: `60 s rate`, or the window's `wait` / `ready`.) Added in 1.2 |
+| SCD30 Temperature (self-heated), SCD30 Humidity (self-heated) | sensor, diagnostic | The SCD30's own on-board sensor; it reads warm and dry, so it is not the room's T/RH. 1-minute means from 1.4. **Unknown** with CO2 when the sensor is silent. Added in 1.3 |
 
 **The LED is a fault light (1.1, 2026-10-27).** It strobes at 5 Hz while CO2 Sensor
 Fault is on, including after a recovery reboot, and is dark the rest of the time.
@@ -173,23 +176,26 @@ that it is.
 | `automatic_self_calibration` | `false` | Moment 1 above |
 | `filters: filter_out` | `0.0` | Moment 2 above |
 | `altitude_compensation` | `157m` | House elevation about 515 ft [D: 515 × 0.3048 = 156.97 m] |
-| `update_interval` | `60s` | The watchdog's 240 s and 900 s are counted in these 60 s reads |
-| `min_version` | `2026.9.1` | The only version it has been compiled on. Raise it only after a recompile |
+| `update_interval` | `2s` | 1.4 (was `60s`): the rate FRC is taken at; see below. The watchdog's 240 s is about 120 missed reads |
+| `copy` + `throttle_average` | `60s` | 1.4: CO2 is the 1-minute mean of CO2 (2 s); SCD30 temperature and humidity are 1-minute means too |
+| `min_version` | `2026.10.0` | The version it was last compiled on. Raise it only after a recompile |
 
 ### Calibration: outdoors, by hand
 
 With ASC off, **forced recalibration (FRC) is the only calibration path.**
 Sensirion's ±50 ppm lifetime drift figure holds only with ASC or FRC in use
 [S: Sensirion SCD30 datasheet v1.0-D1, Table 1, p2; not in this repository].
-The node exposes two API
-actions, `frc_prepare` and `forced_recalibration(reference_ppm)`:
+The node exposes one API action, `forced_recalibration(reference_ppm)`
+(1.4; 1.2 and 1.3 also had `frc_prepare`, removed with the 60 s rate):
 
 1. Take the node outdoors, or to an open window in steady air.
 2. Leave it powered and reading there for several minutes.
-3. Call `frc_prepare` (1.2). Sensirion requires a 2 s measurement rate for
-   at least two minutes before FRC [S: SCD30 Interface Description
-   v1.0-D1, p14]; the node normally measures every 60 s. The Calibration
-   entity reads `2 s window: wait`, then `2 s window: ready` after 2 min.
+3. Check that Calibration reads `2 s rate; FRC ready`. Sensirion requires a
+   2 s measurement rate for at least two minutes before FRC [S: SCD30
+   Interface Description v1.0-D1, p14]. From 1.4 the node always measures
+   at 2 s, so that holds from 2 min after every boot; before then Calibration
+   reads `2 s rate; FRC wait (2 min after boot)`. (1.2-1.3: call `frc_prepare`
+   first and wait for its window's `ready`.)
 4. At `ready`, and only when the last 3 minutes are flat, call
    `forced_recalibration` with the outdoor reference. The rule used on
    2026-10-27: each minute's sd <= 5 ppm, the 3 minute means within 5 ppm
@@ -229,11 +235,26 @@ fallen yet: it shows the calibration was not lost (at 60 s, 277 before
 the FRC and 379 after it [M]), not that it is accurate. Judge nothing for
 10 min after a change of rate.
 
-The window ends with a reboot 20 min after `frc_prepare`. Setup writes the
+**The remedy, firmware 1.4 (2026-10-27, Bill: "measure every 2 s all the
+time and send HA a 1-minute average and show both on the graphs").** The
+node now always measures at 2 s, the rate the FRC was taken at. Before the
+OTA the bedroom read 921 ppm at 60 s, falling about 1 ppm/min [M: n = 12,
+18:01-18:13]. The 2 s rate started with the 18:13:23 boot. About 2 min
+later CO2 (2 s) read 1005 to 1010 [M: n = 9, 18:15], a step of about +86 ppm
+[D: 1007.4 - 921.4]. The 1-minute means were 931.1, 995.4, 1006.5 and 999.4
+[M: 18:14:24 to 18:17:24]; the first one held the climb, as the earlier
+switches did. The settled means are +78 to +85 [D: 999.4 - 921.4; 1006.5 -
+921.4]. The prediction, stated before the OTA, was +60 to 70 [I]. The
+direction held and the step came out larger. One switch, one room, one
+evening; who was in the room was not recorded.
+
+(1.2-1.3) The window ends with a reboot 20 min after `frc_prepare`. Setup writes the
 60 s rate back, because the SCD30 keeps its interval in non-volatile memory
 [S: same document, p9]; a forgotten window cannot leave it at 2 s.
+From 1.4, setup writes 2 s at every boot in the same way.
 
-The node refuses a call before `ready`, or a reference outside 400 to
+The node refuses a call before `ready` (1.4: in the first 2 min after a
+boot), or a reference outside 400 to
 2000 ppm, and Calibration shows the refusal. The time check runs first,
 so a test call with 399 can never apply.
 **Never call it from an automation.** A reference given indoors bakes the
@@ -256,6 +277,10 @@ count. Why 240 s: four missed 60 s reads always raise the fault, and three can,
 if a 30 s tick lands just before the fourth read is due. After boot, the dropped 0 ppm reading comes
 at about 60 s and the first real one at about 120 s, which leaves about 120 s of
 margin [I: falsified if a boot with a working sensor logs "no SCD30 reading"].
+1.4: at 2 s, 240 s is about 120 missed reads, and the first real reading comes
+at about 4 s, so the boot margin is about 236 s [I: same falsifier]. CO2 (2 s)
+goes unknown at 240 s; the 1-minute means (CO2, temperature, humidity) go
+unknown at the end of the minute that holds no number, by 330 s [M: harness S2].
 
 ### Building
 
@@ -263,7 +288,7 @@ margin [I: falsified if a boot with a working sensor logs "no SCD30 reading"].
 2. Provide a `secrets.yaml` with these keys: `wifi_ssid`, `wifi_password`,
    `ap_password`, `ota_password`, `api_key_bedroom_co2_node`,
    `api_key_family_room_co2_node`.
-3. Compile with ESPHome 2026.9.1 or later. Do the first flash over USB, then
+3. Compile with ESPHome 2026.10.0 or later (the `min_version`; 1.4 was built on it). Do the first flash over USB, then
    use OTA. Logging runs over the C3's native USB Serial/JTAG, which frees GPIO20
    for the LED.
 
@@ -279,24 +304,28 @@ if your ESPHome host cannot resolve `.local` names.
   [`sim.cpp.in`](harness/sim.cpp.in). The lambda text is never retyped, so the
   test runs exactly what the firmware runs.
 - `sim.cpp.in` stubs `millis()` (including the 32-bit wrap), the restored
-  globals, `App.safe_reboot()` and the entities. It runs eight scenarios: healthy;
-  a late first read at about 306 s; a sensor that dies and never returns; one
+  globals, `App.safe_reboot()`, the entities and (1.4) `throttle_average`, as
+  ESPHome 2026.10.0's `filter.cpp` implements it. It runs eight scenarios: healthy,
+  swept over boot, tick and averaging phases;
+  a late first read at about 303 s; a sensor that dies and never returns; one
   that dies and returns at 50 min; a 100 s glitch; a 600 s glitch that recovers;
-  healthy across the `millis()` wrap; and dead from power-up.
+  healthy across the `millis()` wrap, swept over the tick phase in 500 ms steps;
+  and dead from power-up.
 - [`faults.py`](harness/faults.py) proves the test can fail. It runs the clean
-  config, which must PASS, then eight single-span faults, each of which must FAIL:
+  config, which must PASS, then eleven single-span faults, each of which must FAIL:
   the NaN guard removed, the reboot cap raised to 4, the stale threshold cut to
   24 s, wrap-unsafe age arithmetic, a recovery boot that clears the fault, and
   (1.3) a stale SCD30 temperature or humidity left showing, or blanked while
-  healthy.
+  healthy; (1.4) a stale CO2 left showing, the NaN sent to the mean instead of
+  the 2 s reading, or the 2 s reading blanked while healthy.
 
 ```
 pip install ziglang pyyaml
 python harness/faults.py esphome/co2-node-common.yaml harness/work
 ```
 
-The last line should read `FAULTS: PASS (0 of 9 directions wrong)` [M, 2026-10-27,
-firmware 1.3]. Toolchain last recorded as Python 3.14.3, ziglang 0.16.0 and
+The last line should read `FAULTS: PASS (0 of 12 directions wrong)` [M, 2026-10-27,
+firmware 1.4; the clean config `RESULT: PASS (224 checks)`]. Toolchain last recorded as Python 3.14.3, ziglang 0.16.0 and
 PyYAML 6.0.3 [M, 2026-10-18].
 
 **What the harness does not prove:** anything about the SCD30 driver, the I2C
