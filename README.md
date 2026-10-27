@@ -213,6 +213,22 @@ near 426 is [I], falsified by a reference meter there reading near 341.
 After 2 of 3 boots that day the first readings started low and climbed
 for about 4 min [M]; judge nothing from the first 5 min after a boot.
 
+**Correction, 2026-10-27 17:50 (R13): the cause is the measurement rate,
+not the boot.** Each climb began when `frc_prepare` moved the rate from
+60 s to 2 s; after the 16:53:57 OTA the 60 s readings held 278, 277 until
+`frc_prepare` at 16:55:41 [M]. Each return to 60 s did the reverse,
+holding about 4 min and then falling: 340 to 279 after 16:46:26, and 454
+to 379 after the 17:15:46 window-end reboot [M]. In the same air the 60 s
+reading sat 60 to 70 ppm below the 2 s reading [D: 338.5 - 278, 343.0 -
+277, 448.9 - 381; n = 3 transitions, one unit, one afternoon]. The
+mechanism is unknown. FRC is taken at 2 s, as p14 asks, and the node runs
+at 60 s, so its readings likely sit about 65 ppm below the reference [I:
+falsified by the node, outdoors at 60 s and settled, reading near 426].
+The PERSIST figure compared 2 s readings with 60 s readings that had not
+fallen yet: it shows the calibration was not lost (at 60 s, 277 before
+the FRC and 379 after it [M]), not that it is accurate. Judge nothing for
+10 min after a change of rate.
+
 The window ends with a reboot 20 min after `frc_prepare`. Setup writes the
 60 s rate back, because the SCD30 keeps its interval in non-volatile memory
 [S: same document, p9]; a forgotten window cannot leave it at 2 s.
