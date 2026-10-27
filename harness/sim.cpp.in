@@ -9,6 +9,13 @@
 //   - safe_reboot persists restore_value globals: the global (HARDWARE) stores
 //     in on_shutdown before the syncer (BUS) flushes    [core/application.cpp:59-66,278-285]
 //   - the syncer also flushes every 60 s                [preferences/__init__.py:19]
+// 1.4 (2026-10-27), read from ESPHome 2026.10.0:
+//   - the SCD30 measures and publishes every update_interval, here 2 s [scd30.cpp:68,187-192]
+//   - copy forwards the source's filtered state, NaN included         [copy_sensor.cpp:9]
+//   - throttle_average: new_value() publishes nothing; each window end sends the mean of
+//     the window's numbers, else NaN if a NaN came, else nothing; the window is a
+//     scheduler interval, first run at a random 0-5 s offset   [sensor/filter.cpp:171-194,
+//                                                                core/scheduler.cpp:107-110]
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -33,19 +40,35 @@ static PrefsStub prefs_stub;
 struct Trace {
   std::vector<double> boot_at, reboot_at, fault_on, fault_off, nan_at, real_at;
   std::vector<double> t_nan_at, h_nan_at;  // 1.3: SCD30 temperature / humidity went numeric -> NaN
+  std::vector<double> mean_nan_at;         // 1.4: "CO2", the 1-minute mean, went numeric -> NaN
+  int mean_outputs = 0;                    // 1.4: numbers the mean sent
 };
 static Trace *T = nullptr;
 
 struct BinarySensor { bool state = false; void publish_state(bool s); };
 struct Sensor { float state = NAN; void publish_state(float v); };
-struct PlainSensor {  // 1.3: T, RH - no filter, no on_value
-  float state = NAN; std::vector<double> *nan_at = nullptr;
-  void publish_state(float v) { if (std::isnan(v) && !std::isnan(this->state)) nan_at->push_back(wall_s); this->state = v; }
+// 1.4: replaces 1.3's PlainSensor (T, RH, no filter). A sensor whose only filter is
+// throttle_average: 60s - the copy "CO2", and T and RH. No on_value.
+struct AvgSensor {
+  float state = NAN; std::vector<double> *nan_at = nullptr; int *outputs = nullptr;
+  float sum = 0.0f; int n = 0; bool have_nan = false;  // float, as filter.h's sum_
+  void publish_state(float v) { if (std::isnan(v)) have_nan = true; else { sum += v; n++; } }
+  void window_end() {
+    if (n == 0) { if (have_nan) out(NAN); }
+    else { out(sum / n); sum = 0.0f; n = 0; }
+    have_nan = false;
+  }
+  void out(float v) {
+    if (std::isnan(v) && !std::isnan(this->state)) nan_at->push_back(wall_s);
+    if (!std::isnan(v) && outputs) (*outputs)++;
+    this->state = v;
+  }
 };
 
 static BinarySensor co2_fault;
-static Sensor co2;
-static PlainSensor scd30_temperature, scd30_humidity;  // 1.3: published by the same read as co2 (scd30.cpp:186-192)
+static Sensor co2_2s;   // 1.4: "CO2 (2 s)", the scd30 co2 (was id co2 to 1.3)
+static AvgSensor co2;   // 1.4: "CO2", copy of co2_2s + throttle_average
+static AvgSensor scd30_temperature, scd30_humidity;  // 1.3: published by the same read as co2 (scd30.cpp:186-192)
 static uint32_t g_last_co2_ms = 0;  // globals: restore_value false
 static int g_stale_reboots = 0;     // globals: restore_value true
 #define id(x) (x)
@@ -71,6 +94,7 @@ void Sensor::publish_state(float v) {
   if (std::isnan(v) && !std::isnan(this->state)) T->nan_at.push_back(wall_s);
   this->state = v;
   on_value_(v);
+  co2.publish_state(v);  // 1.4: the copy's callback, registered in its setup, after on_value
 }
 
 struct Scenario {
@@ -78,11 +102,12 @@ struct Scenario {
   double hours;
   std::function<bool(double)> alive;  // is the SCD30 answering at wall time s?
   bool power_loss = true;             // a dead spell needs a re-setup (reboot) to read again
-  uint32_t first_meas_ms = 61000;     // SCD30 start -> first (0 ppm) measurement
+  uint32_t first_meas_ms = 2000;      // SCD30 start -> first (0 ppm) measurement (1.4: was 61000 at 60 s)
   uint32_t tick_phase_ms = 0;
   uint32_t millis_at_boot = 0;        // to cross the 32-bit millis() wrap
+  uint32_t avg_phase_ms = 2500;       // 1.4: first window end of the CO2 mean; T, RH follow at +1.3 s, +2.6 s
 };
-struct Result { Trace t; bool fault = false, nan = false; int count = 0, nvs = 0; };
+struct Result { Trace t; bool fault = false, nan = false, mean_nan = false; int count = 0, nvs = 0; };
 
 static Result run(const Scenario &sc) {
   Result r;
@@ -92,9 +117,12 @@ static Result run(const Scenario &sc) {
   const double end_s = sc.hours * 3600.0;
   for (;;) {
     co2_fault = BinarySensor{};
-    co2 = Sensor{};
-    scd30_temperature = PlainSensor{NAN, &r.t.t_nan_at};  // a boot starts them at NaN, as on the device
-    scd30_humidity = PlainSensor{NAN, &r.t.h_nan_at};
+    co2_2s = Sensor{};
+    co2 = AvgSensor{NAN, &r.t.mean_nan_at, &r.t.mean_outputs};
+    scd30_temperature = AvgSensor{NAN, &r.t.t_nan_at};  // a boot starts them at NaN, as on the device
+    scd30_humidity = AvgSensor{NAN, &r.t.h_nan_at};
+    AvgSensor *avg[3] = {&co2, &scd30_temperature, &scd30_humidity};
+    uint32_t next_avg[3] = {sc.avg_phase_ms, sc.avg_phase_ms + 1300, sc.avg_phase_ms + 2600};
     g_last_co2_ms = 0;
     g_stale_reboots = nvs;
     r.t.boot_at.push_back(wall0);
@@ -110,26 +138,32 @@ static Result run(const Scenario &sc) {
     on_boot_();
     try {
       for (;;) {
-        const uint32_t t = std::min({next_meas, next_tick, next_sync});
+        const uint32_t t = std::min({next_meas, next_tick, next_sync, next_avg[0], next_avg[1], next_avg[2]});
         set_now(t);
         if (wall_s > end_s) {
-          r.fault = co2_fault.state; r.nan = std::isnan(co2.state); r.count = g_stale_reboots; r.nvs = nvs;
+          r.fault = co2_fault.state; r.nan = std::isnan(co2_2s.state); r.mean_nan = std::isnan(co2.state);
+          r.count = g_stale_reboots; r.nvs = nvs;
           return r;
         }
+        int w = -1;
+        for (int i = 0; i < 3; i++) if (w < 0 && t == next_avg[i]) w = i;
         if (t == next_meas) {
           const bool up = sc.alive(wall_s);
           if (!up && sc.power_loss) lost = true;
           if (setup_ok && up && !lost) {
-            co2.publish_state(k == 0 ? 0.0f : 650.0f);
+            co2_2s.publish_state(k == 0 ? 0.0f : 650.0f);
             scd30_temperature.publish_state(24.0f);
             scd30_humidity.publish_state(40.0f);
             if (k > 0) r.t.real_at.push_back(wall_s);
           }
           k++;
-          next_meas += 60000;
+          next_meas += 2000;  // 1.4: update_interval 2s (was 60000)
         } else if (t == next_tick) {
           tick_();
           next_tick += 30000;
+        } else if (w >= 0) {
+          avg[w]->window_end();
+          next_avg[w] += 60000;
         } else {
           nvs = g_stale_reboots;
           next_sync += 60000;
@@ -165,21 +199,26 @@ int main(int argc, char **) {
   const auto dies_at = [](double d) { return [d](double s) { return s < d; }; };
   const auto out_between = [](double a, double b) { return [a, b](double s) { return s < a || s >= b; }; };
 
-  // S1 healthy, every SCD30 first-sample delay and tick phase: never a fault, never a reboot
-  for (uint32_t first : {60500u, 61000u, 120000u, 175000u})
-    for (uint32_t ph : {0u, 7000u, 15000u, 29999u}) {
-      Scenario sc{"S1 healthy", 6, always}; sc.first_meas_ms = first; sc.tick_phase_ms = ph;
-      cur = "S1 healthy";
-      Result r = run(sc);
-      CHECK(r.t.reboot_at.empty() && r.t.fault_on.empty() && !r.nan && r.count == 0,
-            "first %u ph %u: reboots %zu fault_on %zu nan %d", first, ph, r.t.reboot_at.size(), r.t.fault_on.size(), r.nan);
-      CHECK(r.t.t_nan_at.empty() && r.t.h_nan_at.empty(), "1.3: healthy T/RH blanked %zu / %zu times",
-            r.t.t_nan_at.size(), r.t.h_nan_at.size());
-      if (first == 61000u && ph == 0u) summary(r);
-    }
+  // S1 healthy, every SCD30 first-sample delay, tick phase and (1.4) mean-window phase:
+  // never a fault, never a reboot, never a NaN, and the mean sends a number every minute
+  for (uint32_t first : {2000u, 2500u, 120000u, 175000u})
+    for (uint32_t ph : {0u, 7000u, 15000u, 29999u})
+      for (uint32_t ap : {0u, 2500u, 4999u}) {
+        Scenario sc{"S1 healthy", 6, always}; sc.first_meas_ms = first; sc.tick_phase_ms = ph; sc.avg_phase_ms = ap;
+        cur = "S1 healthy";
+        Result r = run(sc);
+        CHECK(r.t.reboot_at.empty() && r.t.fault_on.empty() && !r.nan && r.count == 0,
+              "first %u ph %u: reboots %zu fault_on %zu nan %d", first, ph, r.t.reboot_at.size(), r.t.fault_on.size(), r.nan);
+        CHECK(r.t.t_nan_at.empty() && r.t.h_nan_at.empty(), "1.3: healthy T/RH blanked %zu / %zu times",
+              r.t.t_nan_at.size(), r.t.h_nan_at.size());
+        CHECK(r.t.mean_nan_at.empty() && r.t.mean_outputs >= 6 * 60 - 4, "1.4: mean blanked %zu times, sent %d numbers",
+              r.t.mean_nan_at.size(), r.t.mean_outputs);
+        if (first == 2000u && ph == 0u && ap == 2500u) summary(r);
+      }
 
   { // S1b the [I] boot margin's edge: first real read > 240 s after on_boot -> brief fault, no reboot
-    Scenario sc{"S1b first real read at ~306 s", 6, always}; sc.first_meas_ms = 245000;
+    // 1.4: moved from 245000 (first real read ~306 s at 60 s) to keep the read past the 271 s tick at 2 s
+    Scenario sc{"S1b first real read at ~303 s", 6, always}; sc.first_meas_ms = 300000;
     cur = sc.name; Result r = run(sc); summary(r);
     CHECK(r.t.fault_on.size() == 1 && r.t.fault_off.size() == 1 && r.t.reboot_at.empty() && !r.nan, "boundary not as modelled");
   }
@@ -193,9 +232,13 @@ int main(int argc, char **) {
     // 1.3, timed and not end-state: the first draft (2026-10-27) checked T/RH at the END of S2 and could not
     // fail - F6/F7 PASSED - because every recovery boot starts them at NaN. The two tick lines buy the
     // 240-900 s before the first reboot, so that is what is timed (R13).
-    CHECK(within(first_or(r.t.t_nan_at, -1) - L, 240, 270) && within(first_or(r.t.h_nan_at, -1) - L, 240, 270),
+    CHECK(within(first_or(r.t.t_nan_at, -1) - L, 240, 330) && within(first_or(r.t.h_nan_at, -1) - L, 240, 330),
           "1.3: T/RH NaN %.1f / %.1f s after last read (want with CO2)", first_or(r.t.t_nan_at, -1) - L,
           first_or(r.t.h_nan_at, -1) - L);
+    // 1.4: T/RH above are now 1-minute means, so their NaN comes at a window end; this check is
+    // [L+240, L+330], not 270. The raw "CO2 (2 s)" (nan_at) keeps the 270.
+    CHECK(within(first_or(r.t.mean_nan_at, -1) - L, 240, 330), "1.4: mean NaN %.1f s after last read",
+          first_or(r.t.mean_nan_at, -1) - L);
     CHECK(r.t.reboot_at.size() == 3 && r.t.boot_at.size() == 4, "reboots %zu (want 3)", r.t.reboot_at.size());
     if (r.t.reboot_at.size() >= 1) CHECK(within(r.t.reboot_at[0] - L, 900, 930), "reboot 1 at L+%.1f", r.t.reboot_at[0] - L);
     for (size_t i = 1; i < r.t.reboot_at.size() && i < r.t.boot_at.size(); i++)
@@ -205,32 +248,41 @@ int main(int argc, char **) {
       for (double f : r.t.fault_on) seen |= within(f - r.t.boot_at[i], 1.4, 1.6);
       CHECK(seen, "boot %zu did not carry the fault", i + 1);
     }
-    CHECK(r.fault && r.nan && r.count == 3 && r.nvs == 3, "end state fault %d nan %d count %d nvs %d", r.fault, r.nan, r.count, r.nvs);
+    CHECK(r.fault && r.nan && r.mean_nan && r.count == 3 && r.nvs == 3, "end state fault %d nan %d mean_nan %d count %d nvs %d",
+          r.fault, r.nan, r.mean_nan, r.count, r.nvs);
   }
 
   { // S3 cable lost at 30 min, back at 50 min: the 2nd recovery reboot re-runs setup, count and fault clear
     Scenario sc{"S3 dies 30 min, back 50 min", 6, out_between(1800, 3000)};
     cur = sc.name; Result r = run(sc); summary(r);
     CHECK(r.t.reboot_at.size() == 2, "reboots %zu (want 2)", r.t.reboot_at.size());
-    CHECK(!r.fault && !r.nan && r.count == 0 && r.nvs == 0, "end state fault %d nan %d count %d nvs %d", r.fault, r.nan, r.count, r.nvs);
+    CHECK(!r.fault && !r.nan && !r.mean_nan && r.count == 0 && r.nvs == 0, "end state fault %d nan %d mean_nan %d count %d nvs %d",
+          r.fault, r.nan, r.mean_nan, r.count, r.nvs);
   }
 
-  { // S4 bus glitch of 2 reads: nothing
+  { // S4 bus glitch of 100 s (2 reads at 60 s; 1.4: 50 reads at 2 s): nothing
     Scenario sc{"S4 glitch 1800-1900 s (2 reads)", 3, out_between(1800, 1900)}; sc.power_loss = false;
     cur = sc.name; Result r = run(sc); summary(r);
-    CHECK(r.t.fault_on.empty() && r.t.reboot_at.empty() && !r.nan, "glitch raised a fault");
+    CHECK(r.t.fault_on.empty() && r.t.reboot_at.empty() && !r.nan && r.t.mean_nan_at.empty(), "glitch raised a fault");
   }
 
   { // S5 bus glitch of 10 min, readings resume by themselves: fault on then off, no reboot
     Scenario sc{"S5 glitch 1800-2400 s, self-recovers", 3, out_between(1800, 2400)}; sc.power_loss = false;
     cur = sc.name; Result r = run(sc); summary(r);
-    CHECK(r.t.fault_on.size() == 1 && r.t.fault_off.size() == 1 && r.t.reboot_at.empty() && !r.nan && r.count == 0, "not on/off/no-reboot");
+    CHECK(r.t.fault_on.size() == 1 && r.t.fault_off.size() == 1 && r.t.reboot_at.empty() && !r.nan && !r.mean_nan && r.count == 0,
+          "not on/off/no-reboot");
   }
 
-  { // S6 healthy across the 32-bit millis() wrap: nothing
+  // S6 healthy across the 32-bit millis() wrap: nothing.
+  // 1.4: swept over tick phases. The first 1.4 run (2026-10-27) let F4 PASS: at 2 s a read
+  // comes within 2 s of the wrap, so only a tick inside that gap sees the wrap, and phase 0
+  // never lands there (it did at 60 s). Phase 9500 puts a tick 0.5 s after it (R13).
+  for (uint32_t ph = 0; ph < 30000u; ph += 500u) {
     Scenario sc{"S6 healthy across millis wrap", 3, always}; sc.millis_at_boot = 0xFFFFFFFFu - 100000u;
-    cur = sc.name; Result r = run(sc); summary(r);
-    CHECK(r.t.fault_on.empty() && r.t.reboot_at.empty() && !r.nan, "wrap raised a fault");
+    sc.tick_phase_ms = ph;
+    cur = sc.name; Result r = run(sc);
+    if (ph == 0u) summary(r);
+    CHECK(r.t.fault_on.empty() && r.t.reboot_at.empty() && !r.nan && r.t.mean_nan_at.empty(), "ph %u: wrap raised a fault", ph);
   }
 
   { // S7 no sensor from power-up: fault by boot+271.5, reboot at boot+901.5..931.5, 3 then stop
@@ -239,7 +291,7 @@ int main(int argc, char **) {
     CHECK(within(first_or(r.t.fault_on, -1), 241.5, 271.5), "first fault at %.1f", first_or(r.t.fault_on, -1));
     CHECK(r.t.reboot_at.size() == 3 && within(first_or(r.t.reboot_at, -1), 901.5, 931.5), "reboots %zu, first at %.1f",
           r.t.reboot_at.size(), first_or(r.t.reboot_at, -1));
-    CHECK(r.fault && r.nan && r.count == 3, "end state");
+    CHECK(r.fault && r.nan && r.mean_nan && r.count == 3, "end state");
   }
 
   if (failed) std::printf("RESULT: FAIL (%d of %d checks failed)\n", failed, checks);

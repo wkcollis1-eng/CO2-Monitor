@@ -50,6 +50,26 @@ FAULTS = [
         "          if (age < 240000) return;\n",
         "          id(scd30_temperature).publish_state(NAN);\n          if (age < 240000) return;\n",
     ),
+    # 1.4 (2026-10-27): F8 still fails, but only in S2. T is now a 1-minute mean,
+    # and throttle_average drops a NaN from any minute with a number in it
+    # (filter.cpp:171-194), so a healthy node hides the edit; a dead one blanks T
+    # at L+64.8 s instead of with CO2 [M, run by hand]. (The first 1.4 draft of
+    # this list dropped F8 as unable to show; that was wrong, R13.)
+    (
+        "F11 1.4 raw CO2 blanked ahead of the age test",
+        "          if (age < 240000) return;\n",
+        "          id(co2_2s).publish_state(NAN);\n          if (age < 240000) return;\n",
+    ),
+    (
+        "F9 1.4 stale CO2 left showing",
+        "          if (!std::isnan(id(co2_2s).state)) id(co2_2s).publish_state(NAN);   // 1.4: the raw; the mean follows\n",
+        "",
+    ),
+    (
+        "F10 1.4 NaN to the mean, raw left showing",
+        "id(co2_2s).publish_state(NAN);   // 1.4",
+        "id(co2).publish_state(NAN);   // 1.4",
+    ),
 ]
 
 
