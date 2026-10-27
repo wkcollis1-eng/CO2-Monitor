@@ -190,11 +190,28 @@ actions, `frc_prepare` and `forced_recalibration(reference_ppm)`:
    at least two minutes before FRC [S: SCD30 Interface Description
    v1.0-D1, p14]; the node normally measures every 60 s. The Calibration
    entity reads `2 s window: wait`, then `2 s window: ready` after 2 min.
-4. At `ready`, call `forced_recalibration` with the outdoor reference.
+4. At `ready`, and only when the last 3 minutes are flat, call
+   `forced_recalibration` with the outdoor reference. The rule used on
+   2026-10-27: each minute's sd <= 5 ppm, the 3 minute means within 5 ppm
+   of each other, and the 3-min mean no higher than 469 ppm [D: 426 + 43,
+   the accuracy at 426 from p1]. There is deliberately no lower bound: a
+   plume can only raise outdoor CO2, so a flat reading below 426 is the
+   offset FRC exists to remove. The first rule had a lower bound, and it
+   rejected a flat window that read about 82 ppm low (R13, CHANGELOG
+   2026-10-27). Watch the SCD30 Temperature (1.3) too: the sensor should
+   be near the outdoor temperature [S: SCD30 Design-In Guidelines D1, p2].
    The global background was 426.07 ppm in September 2026 [S: NOAA GML,
    Mauna Loa monthly mean, gml.noaa.gov/ccgg/trends, updated 2026-10-09].
    A local outdoor offset above that is [I] and is not used.
 5. Calibration then reads `applied N ppm`, or the reason it was not.
+
+Last applied: bedroom node, 2026-10-27 17:01, on the front porch, 426 ppm.
+Before it, the 3-min mean was 340.9 ppm; afterwards the reading was 425.7
+[M]. It survived the window-end reboot: "PERSIST: PASS (after - before =
+-2.0 ppm, limit 43)" [M, 3 readings either side]. That the porch air was
+near 426 is [I], falsified by a reference meter there reading near 341.
+After 2 of 3 boots that day the first readings started low and climbed
+for about 4 min [M]; judge nothing from the first 5 min after a boot.
 
 The window ends with a reboot 20 min after `frc_prepare`. Setup writes the
 60 s rate back, because the SCD30 keeps its interval in non-volatile memory
