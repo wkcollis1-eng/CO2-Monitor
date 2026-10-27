@@ -150,6 +150,11 @@ reaches both.
 | Node Status, WiFi Signal, Uptime, Free Heap, Loop Time | diagnostics | |
 | Node ESPHome Version, Reset Reason | diagnostics | |
 | Node Restart | button | |
+| LED Test | button, config | Strobes the LED for 15 s, to prove the LED and that it can be seen. Added in 1.1 |
+
+**The LED is a fault light (1.1, 2026-10-27).** It strobes at 5 Hz while CO2 Sensor
+Fault is on, including after a recovery reboot, and is dark the rest of the time.
+`harness/led.py` tests the LED lambda both ways, the way `faults.py` tests the watchdog.
 
 **There is no SCD30 temperature or humidity entity, on purpose.** The SCD30 heats
 itself, which skews both readings, and the rooms already have their own T/RH
