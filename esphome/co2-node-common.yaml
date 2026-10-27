@@ -33,15 +33,25 @@
 #      The LED on GPIO20 strobes at 5 Hz while "CO2 Sensor Fault" is on, and
 #      is dark otherwise. "LED Test" strobes it for 15 s, which proves the
 #      pin, the LED and the light path without needing a fault.
+#   5. A calibration months from now, by hand, with nobody to check it
+#      (added 2026-10-27, firmware 1.2). Sensirion: FRC needs "a measurement
+#      rate of 2s for at least two minutes before applying" it (SCD30
+#      Interface Description v1.0-D1 p14); this node measures every 60 s.
+#      frc_prepare opens a 20 min window at 2 s; forced_recalibration is
+#      refused until 2 min into it; "Calibration" shows wait / ready / the
+#      result in HA. The window ends with a reboot, whose setup writes the
+#      60 s rate back: the SCD30 keeps its interval in non-volatile memory
+#      (p9), so a forgotten window must not leave it at 2 s.
 #
 # Calibration: with ASC off, the ONLY path is forced recalibration (the
 # forced_recalibration API action below), done outdoors by hand.
+# 1.2: call frc_prepare first, then forced_recalibration at "ready" (moment 5).
 # =============================================================================
 
 substitutions:
   node_name: co2-node
   friendly: CO2 Node
-  fw_version: "1.1-draft"   # 1.1 (2026-10-27): fault-only LED + LED Test
+  fw_version: "1.2-draft"   # 1.2 (2026-10-27): 2 s calibration window. 1.1: fault-only LED + LED Test
 
 esphome:
   name: ${node_name}
@@ -95,6 +105,11 @@ captive_portal:
 api:
   reboot_timeout: 0s     # HA being down must not reboot the node (as basement-th-node)
   actions:
+    # Moment 5 above (added 2026-10-27, 1.2): opens the 2 s window. Call it
+    # with the node already in place; call forced_recalibration at "ready".
+    - action: frc_prepare
+      then:
+        - script.execute: frc_window
     # Forced recalibration. Run it OUTDOORS (or at an open window in steady air),
     # after the node has been powered and reading there for several minutes,
     # with the outdoor reference (~420 ppm). Never from an automation: a
@@ -103,22 +118,44 @@ api:
       variables:
         reference_ppm: int
       then:
+        # CHANGED 2026-10-27 (1.2): the window guard runs FIRST, so a test call
+        # with 399 ppm is refused by both guards and can never apply.
         - if:
             condition:
-              lambda: 'return reference_ppm >= 400 && reference_ppm <= 2000;'
+              lambda: 'return id(g_frc_open_ms) != 0 && millis() - id(g_frc_open_ms) >= 120000;'
             then:
-              - scd30.force_recalibration_with_reference:
-                  id: scd30_sensor
-                  value: !lambda 'return reference_ppm;'
-              - logger.log:
-                  level: WARN
-                  format: "FRC applied: reference %d ppm"
-                  args: ['(int) reference_ppm']   # API int is int32_t = long on the C3
+              - if:
+                  condition:
+                    lambda: 'return reference_ppm >= 400 && reference_ppm <= 2000;'
+                  then:
+                    # 1.2: a direct call, because the scd30 action discards the
+                    # result, and "applied" must mean the SCD30 took it.
+                    - if:
+                        condition:
+                          lambda: 'return id(scd30_sensor).force_recalibration_with_reference((uint16_t) reference_ppm);'
+                        then:
+                          - lambda: 'id(g_frc_last) = "applied " + std::to_string((int) reference_ppm) + " ppm";'
+                          - logger.log:
+                              level: WARN
+                              format: "FRC applied: reference %d ppm"
+                              args: ['(int) reference_ppm']   # API int is int32_t = long on the C3
+                        else:
+                          - lambda: 'id(g_frc_last) = "FAILED: the SCD30 did not take it";'
+                          - logger.log:
+                              level: ERROR
+                              format: "FRC failed: the SCD30 did not take %d ppm"
+                              args: ['(int) reference_ppm']   # API int is int32_t = long on the C3
+                  else:
+                    - lambda: 'id(g_frc_last) = "refused: " + std::to_string((int) reference_ppm) + " is outside 400-2000";'
+                    - logger.log:
+                        level: ERROR
+                        format: "FRC refused: %d ppm is outside 400-2000"
+                        args: ['(int) reference_ppm']   # API int is int32_t = long on the C3
             else:
+              - lambda: 'id(g_frc_last) = "refused: no 2 s window, or under 2 min";'
               - logger.log:
                   level: ERROR
-                  format: "FRC refused: %d ppm is outside 400-2000"
-                  args: ['(int) reference_ppm']   # API int is int32_t = long on the C3
+                  format: "FRC refused: run frc_prepare and wait 2 min at the 2 s rate"
 
 ota:
   - platform: esphome
@@ -152,6 +189,14 @@ globals:
     type: bool
     restore_value: false    # a reboot ends a test
     initial_value: 'false'
+  - id: g_frc_open_ms      # moment 5: millis() when the 2 s window opened; 0 = closed
+    type: uint32_t
+    restore_value: false    # the window ends with a reboot, by design
+    initial_value: '0'
+  - id: g_frc_last         # moment 5: the last calibration result, shown in HA
+    type: std::string
+    restore_value: false
+    initial_value: '""'
 
 script:
   - id: led_test
@@ -163,6 +208,28 @@ script:
       - lambda: 'id(g_led_test) = true;'
       - delay: 15s
       - lambda: 'id(g_led_test) = false;'
+  - id: frc_window          # moment 5 above
+    mode: restart           # a second frc_prepare restarts the 2 min and the 20 min
+    then:
+      - if:
+          condition:
+            # 0x4600 = Set measurement interval (Interface Description p9)
+            lambda: 'return id(scd30_sensor).write_command((uint16_t) 0x4600, (uint16_t) 2);'
+          then:
+            - lambda: 'id(g_frc_open_ms) = millis() | 1; id(g_frc_last) = "";'
+            - logger.log:
+                level: WARN
+                format: "FRC window: SCD30 at 2 s; ready in 2 min; reboot in 20 min"
+            - delay: 20min
+            - logger.log:
+                level: WARN
+                format: "FRC window over: rebooting to write the 60 s rate back"
+            - lambda: 'App.safe_reboot();'
+          else:
+            - lambda: 'id(g_frc_last) = "window FAILED: the SCD30 did not take 2 s";'
+            - logger.log:
+                level: ERROR
+                format: "FRC window: the SCD30 did not take the 2 s interval"
 
 output:
   - platform: gpio
@@ -227,6 +294,18 @@ sensor:
       entity_category: diagnostic
 
 text_sensor:
+  - platform: template
+    name: "Calibration"      # moment 5 above
+    icon: mdi:tune-vertical
+    entity_category: diagnostic
+    update_interval: 5s
+    lambda: |-
+      std::string s;
+      if (id(g_frc_open_ms) == 0) s = "60 s rate";
+      else if (millis() - id(g_frc_open_ms) < 120000) s = "2 s window: wait";
+      else s = "2 s window: ready";
+      if (!id(g_frc_last).empty()) s += "; " + id(g_frc_last);
+      return {s};
   - platform: version
     name: "Node ESPHome Version"
     entity_category: diagnostic

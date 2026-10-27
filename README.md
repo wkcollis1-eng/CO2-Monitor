@@ -151,6 +151,7 @@ reaches both.
 | Node ESPHome Version, Reset Reason | diagnostics | |
 | Node Restart | button | |
 | LED Test | button, config | Strobes the LED for 15 s, to prove the LED and that it can be seen. Added in 1.1 |
+| Calibration | text, diagnostic | `60 s rate`, or the calibration window's `wait` / `ready`, plus the last result. Added in 1.2 |
 
 **The LED is a fault light (1.1, 2026-10-27).** It strobes at 5 Hz while CO2 Sensor
 Fault is on, including after a recovery reboot, and is dark the rest of the time.
@@ -175,15 +176,28 @@ sensors.
 With ASC off, **forced recalibration (FRC) is the only calibration path.**
 Sensirion's ±50 ppm lifetime drift figure holds only with ASC or FRC in use
 [S: Sensirion SCD30 datasheet v1.0-D1, Table 1, p2; not in this repository].
-The node exposes an API
-action, `forced_recalibration(reference_ppm)`:
+The node exposes two API
+actions, `frc_prepare` and `forced_recalibration(reference_ppm)`:
 
 1. Take the node outdoors, or to an open window in steady air.
 2. Leave it powered and reading there for several minutes.
-3. Call the action with the outdoor reference, about 420 ppm [I: the global
-   background; a local outdoor reading falsifies it, and wins].
+3. Call `frc_prepare` (1.2). Sensirion requires a 2 s measurement rate for
+   at least two minutes before FRC [S: SCD30 Interface Description
+   v1.0-D1, p14]; the node normally measures every 60 s. The Calibration
+   entity reads `2 s window: wait`, then `2 s window: ready` after 2 min.
+4. At `ready`, call `forced_recalibration` with the outdoor reference.
+   The global background was 426.07 ppm in September 2026 [S: NOAA GML,
+   Mauna Loa monthly mean, gml.noaa.gov/ccgg/trends, updated 2026-10-09].
+   A local outdoor offset above that is [I] and is not used.
+5. Calibration then reads `applied N ppm`, or the reason it was not.
 
-The node refuses a reference outside 400 to 2000 ppm and logs the refusal.
+The window ends with a reboot 20 min after `frc_prepare`. Setup writes the
+60 s rate back, because the SCD30 keeps its interval in non-volatile memory
+[S: same document, p9]; a forgotten window cannot leave it at 2 s.
+
+The node refuses a call before `ready`, or a reference outside 400 to
+2000 ppm, and Calibration shows the refusal. The time check runs first,
+so a test call with 399 can never apply.
 **Never call it from an automation.** A reference given indoors bakes the
 room's excess CO2 into every later reading.
 
