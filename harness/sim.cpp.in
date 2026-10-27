@@ -32,14 +32,20 @@ static PrefsStub prefs_stub;
 
 struct Trace {
   std::vector<double> boot_at, reboot_at, fault_on, fault_off, nan_at, real_at;
+  std::vector<double> t_nan_at, h_nan_at;  // 1.3: SCD30 temperature / humidity went numeric -> NaN
 };
 static Trace *T = nullptr;
 
 struct BinarySensor { bool state = false; void publish_state(bool s); };
 struct Sensor { float state = NAN; void publish_state(float v); };
+struct PlainSensor {  // 1.3: T, RH - no filter, no on_value
+  float state = NAN; std::vector<double> *nan_at = nullptr;
+  void publish_state(float v) { if (std::isnan(v) && !std::isnan(this->state)) nan_at->push_back(wall_s); this->state = v; }
+};
 
 static BinarySensor co2_fault;
 static Sensor co2;
+static PlainSensor scd30_temperature, scd30_humidity;  // 1.3: published by the same read as co2 (scd30.cpp:186-192)
 static uint32_t g_last_co2_ms = 0;  // globals: restore_value false
 static int g_stale_reboots = 0;     // globals: restore_value true
 #define id(x) (x)
@@ -87,6 +93,8 @@ static Result run(const Scenario &sc) {
   for (;;) {
     co2_fault = BinarySensor{};
     co2 = Sensor{};
+    scd30_temperature = PlainSensor{NAN, &r.t.t_nan_at};  // a boot starts them at NaN, as on the device
+    scd30_humidity = PlainSensor{NAN, &r.t.h_nan_at};
     g_last_co2_ms = 0;
     g_stale_reboots = nvs;
     r.t.boot_at.push_back(wall0);
@@ -113,6 +121,8 @@ static Result run(const Scenario &sc) {
           if (!up && sc.power_loss) lost = true;
           if (setup_ok && up && !lost) {
             co2.publish_state(k == 0 ? 0.0f : 650.0f);
+            scd30_temperature.publish_state(24.0f);
+            scd30_humidity.publish_state(40.0f);
             if (k > 0) r.t.real_at.push_back(wall_s);
           }
           k++;
@@ -163,6 +173,8 @@ int main(int argc, char **) {
       Result r = run(sc);
       CHECK(r.t.reboot_at.empty() && r.t.fault_on.empty() && !r.nan && r.count == 0,
             "first %u ph %u: reboots %zu fault_on %zu nan %d", first, ph, r.t.reboot_at.size(), r.t.fault_on.size(), r.nan);
+      CHECK(r.t.t_nan_at.empty() && r.t.h_nan_at.empty(), "1.3: healthy T/RH blanked %zu / %zu times",
+            r.t.t_nan_at.size(), r.t.h_nan_at.size());
       if (first == 61000u && ph == 0u) summary(r);
     }
 
@@ -178,6 +190,12 @@ int main(int argc, char **) {
     const double L = last_before(r.t.real_at, 1800);
     CHECK(within(first_or(r.t.fault_on, -1) - L, 240, 270), "fault %.1f s after last read", first_or(r.t.fault_on, -1) - L);
     CHECK(within(first_or(r.t.nan_at, -1) - L, 240, 270), "NaN %.1f s after last read", first_or(r.t.nan_at, -1) - L);
+    // 1.3, timed and not end-state: the first draft (2026-10-27) checked T/RH at the END of S2 and could not
+    // fail - F6/F7 PASSED - because every recovery boot starts them at NaN. The two tick lines buy the
+    // 240-900 s before the first reboot, so that is what is timed (R13).
+    CHECK(within(first_or(r.t.t_nan_at, -1) - L, 240, 270) && within(first_or(r.t.h_nan_at, -1) - L, 240, 270),
+          "1.3: T/RH NaN %.1f / %.1f s after last read (want with CO2)", first_or(r.t.t_nan_at, -1) - L,
+          first_or(r.t.h_nan_at, -1) - L);
     CHECK(r.t.reboot_at.size() == 3 && r.t.boot_at.size() == 4, "reboots %zu (want 3)", r.t.reboot_at.size());
     if (r.t.reboot_at.size() >= 1) CHECK(within(r.t.reboot_at[0] - L, 900, 930), "reboot 1 at L+%.1f", r.t.reboot_at[0] - L);
     for (size_t i = 1; i < r.t.reboot_at.size() && i < r.t.boot_at.size(); i++)

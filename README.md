@@ -152,14 +152,19 @@ reaches both.
 | Node Restart | button | |
 | LED Test | button, config | Strobes the LED for 15 s, to prove the LED and that it can be seen. Added in 1.1 |
 | Calibration | text, diagnostic | `60 s rate`, or the calibration window's `wait` / `ready`, plus the last result. Added in 1.2 |
+| SCD30 Temperature (self-heated), SCD30 Humidity (self-heated) | sensor, diagnostic | The SCD30's own on-board sensor; it reads warm and dry, so it is not the room's T/RH. **Unknown** with CO2 when the sensor is silent. Added in 1.3 |
 
 **The LED is a fault light (1.1, 2026-10-27).** It strobes at 5 Hz while CO2 Sensor
 Fault is on, including after a recovery reboot, and is dark the rest of the time.
 `harness/led.py` tests the LED lambda both ways, the way `faults.py` tests the watchdog.
 
-**There is no SCD30 temperature or humidity entity, on purpose.** The SCD30 heats
-itself, which skews both readings, and the rooms already have their own T/RH
-sensors.
+**The SCD30 temperature and humidity are diagnostics, not room readings (1.3,
+2026-10-27).** The SCD30 heats itself, which skews both readings [S: SCD30
+Interface Description v1.0-D1, p15], and the rooms already have their own T/RH
+sensors. Firmware 1.0 to 1.2 left them out for that reason. 1.3 adds them
+because calibration assumes the sensor is at the temperature of the air it
+reads [S: SCD30 Design-In Guidelines D1, p2], and this is the only way to see
+that it is.
 
 ### Settings that matter
 
@@ -246,17 +251,20 @@ if your ESPHome host cannot resolve `.local` names.
   that dies and returns at 50 min; a 100 s glitch; a 600 s glitch that recovers;
   healthy across the `millis()` wrap; and dead from power-up.
 - [`faults.py`](harness/faults.py) proves the test can fail. It runs the clean
-  config, which must PASS, then five single-span faults, each of which must FAIL:
+  config, which must PASS, then eight single-span faults, each of which must FAIL:
   the NaN guard removed, the reboot cap raised to 4, the stale threshold cut to
-  24 s, wrap-unsafe age arithmetic, and a recovery boot that clears the fault.
+  24 s, wrap-unsafe age arithmetic, a recovery boot that clears the fault, and
+  (1.3) a stale SCD30 temperature or humidity left showing, or blanked while
+  healthy.
 
 ```
 pip install ziglang pyyaml
 python harness/faults.py esphome/co2-node-common.yaml harness/work
 ```
 
-The last line should read `FAULTS: PASS (0 of 6 directions wrong)`. Last run on
-Python 3.14.3, ziglang 0.16.0 and PyYAML 6.0.3 [M, 2026-10-18].
+The last line should read `FAULTS: PASS (0 of 9 directions wrong)` [M, 2026-10-27,
+firmware 1.3]. Toolchain last recorded as Python 3.14.3, ziglang 0.16.0 and
+PyYAML 6.0.3 [M, 2026-10-18].
 
 **What the harness does not prove:** anything about the SCD30 driver, the I2C
 bus, or ESPHome's own flash storage. It shows that the lambdas, given the stubbed

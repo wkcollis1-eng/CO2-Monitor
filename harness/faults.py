@@ -35,6 +35,21 @@ FAULTS = [
         "publish_state(id(g_stale_reboots) > 0);",
         "publish_state(false);",
     ),
+    (
+        "F6 1.3 stale T left showing",
+        "          if (!std::isnan(id(scd30_temperature).state)) id(scd30_temperature).publish_state(NAN);\n",
+        "",
+    ),
+    (
+        "F7 1.3 stale RH left showing",
+        "          if (!std::isnan(id(scd30_humidity).state)) id(scd30_humidity).publish_state(NAN);\n",
+        "",
+    ),
+    (
+        "F8 1.3 T blanked ahead of the age test",
+        "          if (age < 240000) return;\n",
+        "          id(scd30_temperature).publish_state(NAN);\n          if (age < 240000) return;\n",
+    ),
 ]
 
 
