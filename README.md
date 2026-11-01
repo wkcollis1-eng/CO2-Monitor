@@ -103,8 +103,8 @@ not in this repository].*
 3. **Turning ASC off was right for this room.** The lowest minute in five days was
    874.9 ppm, 449 ppm above the 426 ppm outdoor reference [D: 874.9 − 426]. ASC
    needs regular fresh air, and this room did not reach it once in the window.
-4. **CO2 tended to fall around furnace cycles, and these data cannot say why.**
-   See [The furnace](#the-furnace).
+4. **CO2 fell on all five mornings, with or without the furnace, and these data cannot say
+   whether the furnace adds to that.** See [The furnace](#the-furnace).
 5. **No firmware or configuration change follows from this.** The explanations
    below are still models, and a model does not justify changing a running node.
 
@@ -143,9 +143,15 @@ The last night is 8 h because the clocks went back. The run's highest minute,
 ### The furnace
 
 On four of the five mornings a long furnace cycle started between 05:06 and 05:32,
-and CO2 was 95 to 139 ppm lower 15 min after it ended [M]. The fifth morning had no
-cycle: CO2 kept climbing until 06:37 and set the run's highest minute [M]. That
-morning sits inside the longest span without a cycle, 39.07 h from Oct 29 06:58 to
+and CO2 was 95 to 139 ppm lower 15 min after it ended [M]. The fifth morning, Oct 30,
+had no cycle: CO2 kept climbing until 06:37 and set the run's highest minute, then
+fell 138 ppm by 08:50 with the furnace off [M]. So the morning fall does not need
+the furnace. Between 04:00 and 09:00 the fall from peak to low was 155 to 278 ppm on
+the four furnace mornings against 138 on Oct 30, and the steepest 10 min was 70 to
+173 ppm against 65 [M: window chosen after seeing the data]. One morning without a
+cycle is too few to test that difference.
+
+Oct 30 sits inside the longest span without a cycle, 39.07 h from Oct 29 06:58 to
 Oct 30 22:02, when CO2 averaged 1,150 ppm [M: n = 2,344].
 
 | Day | CO2 mean, ppm | Furnace cycles | Furnace minutes | Outdoor mean, °F |
@@ -158,17 +164,20 @@ Oct 30 22:02, when CO2 averaged 1,150 ppm [M: n = 2,344].
 Across all 25 cycles, CO2 moved by a median of −10.2 ppm in the 25 min from the
 start of a cycle, against +3.1 ppm in 196 non-overlapping 25 min windows clear of
 the furnace. The difference is −13.3 ppm, one-sided permutation p = 0.0027 [D:
-20,000 permutations]. That test treats the windows as independent and does not
-hold time of day constant, and 10 of the 25 cycles started between 04:00 and
-08:00 [M]. Nor was the fall prompt or uniform: 7 cycles ended the 25 min higher
-than they began, and the longest, 52.5 min on Nov 1, was 47 ppm up at 25 min and
-95 ppm down 15 min after it ended [M].
+20,000 permutations]. That test does not hold time of day constant, and 10 of the
+25 cycles started between 04:00 and 08:00 [M]. Holding it constant weakens the
+result: p = 0.027 shuffling within 4 h blocks of the day, and p = 0.054 within 2 h
+blocks [D: 20,000 permutations each]. All three treat the windows as independent,
+which makes them look stronger than they are. Nor was the fall prompt or uniform: 7
+cycles ended the 25 min higher than they began, and the longest, 52.5 min on Nov 1,
+was 47 ppm up at 25 min and 95 ppm down 15 min after it ended [M].
 
-So the link held in this window, but its cause is not known. Three explanations
-fit [I]: the blower mixes bedroom air with the rest of the house; warm days need
-less furnace and also push less air through the house; or people get up at about
-the same hour. Four days cannot separate them, because furnace minutes and outdoor
-temperature move together. The family-room node can test the first: blower mixing
+So a furnace effect is possible but not shown. Three explanations fit [I]: the
+blower mixes bedroom air with the rest of the house; warm days need less furnace
+and also push less air through the house; or people get up at about the same hour.
+Only the last also covers the fall on Oct 30. Four days cannot separate them,
+because furnace minutes and outdoor temperature move together. The family-room node
+can test the first: blower mixing
 would pull the two rooms together during a cycle [I: falsified if the gap between
 them holds through cycles].
 
@@ -181,9 +190,9 @@ them holds through cycles].
   high [I: falsified by a reference meter reading below the node]. Accuracy is
   ±(30 ppm + 3 %) [S: SCD30 Interface Description v1.0-D1, p1], or ±60 ppm at
   1,000 and ±65 ppm at 1,150 [D].
-- **Who was in the room.** Who slept there and whether the door was open were not
-  logged night by night, so the differences between nights have no explanation
-  here.
+- **Who was in the room.** Who slept there, whether the door was open and when
+  anyone got up were not logged, so neither the differences between nights nor the
+  morning fall have an explanation here.
 - **The air at the bed.** The node sits on a dresser about 10 ft from the bed
   [Bill]. These are readings at one point in the room, not in the breathing zone.
 - **The rest of the house.** Whether the bedroom is worse than other rooms needs
