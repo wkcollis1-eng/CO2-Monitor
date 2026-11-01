@@ -7,7 +7,7 @@
 [![Hardware: CERN-OHL-S v2](https://img.shields.io/badge/Hardware-CERN--OHL--S%20v2-orange.svg)](LICENSE-HARDWARE)
 [![Code: MIT](https://img.shields.io/badge/Code-MIT-blue.svg)](LICENSE-CODE)
 [![Docs: CC BY 4.0](https://img.shields.io/badge/Docs-CC%20BY%204.0-lightgrey.svg)](LICENSE)
-[![Status](https://img.shields.io/badge/Status-Draft%20firmware%2C%20not%20deployed-yellow.svg)](#status)
+[![Status](https://img.shields.io/badge/Status-Bedroom%20node%20running%2C%20family%20room%20not%20built-green.svg)](#status)
 [![Sponsor](https://img.shields.io/badge/Sponsor-%E2%9D%A4-EA4AAA.svg?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/wkcollis1-eng)
 
 </div>
@@ -15,18 +15,21 @@
 Two CO2 nodes, one in a bedroom and one in a family room. Each pairs an **Adafruit
 SCD30** (PID 4867, a Sensirion NDIR sensor) with a **Seeed XIAO ESP32-C3** on a
 small carrier board, inside a **Hammond 1551V4** enclosure. They run **ESPHome**
-and report to **Home Assistant**.
+and report to **Home Assistant**. The bedroom node is built and running; the
+family-room node is not built yet.
 
 All behaviour lives in one file, [`esphome/co2-node-common.yaml`](esphome/co2-node-common.yaml).
 Each node file holds nothing but its name and its own API key.
 
-![Fit-check model, cover off](hardware/CO2%20Monitor_OPEN.png)
-![Fit-check model, cover lifted](hardware/CO2%20Monitor_EXPLODED.png)
+<p align="center">
+  <img src="hardware/as-built/closed-top.jpg" width="35%" alt="The bedroom node closed: a black vented box about 80 mm square">
+  <img src="hardware/as-built/open-scd30-side.jpg" width="62%" alt="The bedroom node with the cover off: the SCD30 breakout and the carrier board side by side on the base">
+</p>
 
-*KiCad 3D renders of the fit-check model in `hardware/`, not photographs: no node
-has been built yet. The standoff height is not final (see
-[Fit in the enclosure](#fit-in-the-enclosure)), and the model does not show how
-the USB cable leaves the enclosure.*
+*The bedroom node as built: closed on 2026-11-01, and open on 2026-10-27, just
+after its USB flash to firmware 1.1 [M: photo EXIF]. More photos are under
+[As built](#as-built), and the first five nights of data are under
+[Field results](#field-results-the-first-five-nights).*
 
 ---
 
@@ -65,9 +68,128 @@ three such moments, named in the header of the common file:
 |---|---|
 | Firmware | **Rev 1.4-draft**, 2026-10-27 (1.0-draft 2026-10-18). On the bedroom node since 2026-10-27 18:13 |
 | Compile | Bedroom node, firmware 1.4: compiled on **ESPHome 2026.10.0** with 0 compiler warnings and 0 errors [M: build log, 2026-10-27; config_hash `0x664528e8`]; a deliberately broken lambda fails the same build, so the compile gate can fail. 1.0: both nodes on ESPHome 2026.9.1, 0 warnings, 0 errors [M: build logs, 2026-10-18; config_hash `0xa7e479a5` bedroom, `0xc9ec59d4` family room]. ESPHome's own advisory that an OTA password costs about 3.5 KB of flash prints for both, and is accepted |
-| Watchdog | Host-simulated: the clean config passes all 224 checks, and each of the 11 injected faults is caught [M: `harness/faults.py`, 2026-10-27, firmware 1.4; 35 checks and 5 faults on 2026-10-18]. See [The watchdog harness](#the-watchdog-harness) for what that does and does not prove |
-| Deployment | Bedroom node: in Home Assistant since 2026-10-27, firmware 1.4 [M: config_hash `0x664528e8`, ESPHome 2026.10.0, 0 warnings]. Family-room node: not built |
+| Watchdog | Host-simulated: the clean config passes all 224 checks, and each of the 11 injected faults is caught [M: `harness/faults.py`, 2026-10-27, firmware 1.4; 35 checks and 5 faults on 2026-10-18]. See [The watchdog harness](#the-watchdog-harness) for what that does and does not prove. On the device: SCD30 unplugged on 2026-10-27, firmware 1.1. The node logged the fault at 259 s, HA showed CO2 unknown and the fault on, and the LED strobed [M]. Not repeated on 1.4. The 900 s recovery reboot, and the strobe stopping at the next good reading, have not been seen on the device |
+| Deployment | Bedroom node: in Home Assistant since 2026-10-27, firmware 1.4 [M: config_hash `0x664528e8`, ESPHome 2026.10.0, 0 warnings]. On a dresser about 10 ft from the bed [Bill]; 111.65 h with no reset to 2026-11-01 [M]. Family-room node: not built |
 | Hardware | **No new PCB.** The carrier is an existing ESP32-C3 sensor-node board. The KiCad file here is that board, unchanged, with the SCD30 and the enclosure placed on it for a 3D fit check |
+
+## Field results: the first five nights
+
+The bedroom node ran from 2026-10-27 18:14 EDT to 2026-11-01 08:52 EST on
+firmware 1.4: 111.65 h and five nights [M: InfluxDB and the HA recorder, read
+2026-11-01]. That is one node in one room in late October, with outdoor
+temperatures from 26.9 to 67 °F [M].
+
+![Bedroom CO2 over five nights, between 875 and 1,314 ppm: high overnight, lower by day, with a 39 h span and no furnace cycle around the highest reading](hardware/as-built/co2-first-five-days.png)
+
+*UBA: 1,000 ppm is the line to open a window, and 2,000 ppm is unacceptable
+[S: Umweltbundesamt, "Leitwerte für Kohlendioxid in der Innenraumluft" (2008),
+table; not in this repository]. DTU: above 1,150 ppm in a bedroom, sleep quality
+is adversely affected [S: DTU news, May 2023, "Ventilate your bedroom at night";
+not in this repository].*
+
+### Conclusions
+
+1. **The node is reliable so far, on the healthy path.** It ran 111.65 h with no
+   reset and no fault. The three longest gaps in the data were Home Assistant
+   restarting, and the node's uptime ran straight through them. This window did
+   not exercise the fault path: see Watchdog under [Status](#status).
+2. **The room runs elevated, not extreme.** All 6,695 one-minute means were above
+   800 ppm, and none reached 1,500 ppm. Four of the five nights averaged above
+   1,000 ppm by more than the sensor's ±60 ppm; the fifth, at 1,042 ppm, did not.
+   The two highest nights, 1,203 and 1,206 ppm, are 53 to 56 ppm over DTU's 1,150
+   line [D]. That is inside ±65 ppm, so this sensor cannot place them above it.
+   Nothing here ventilates on its own, so lowering a high reading means opening
+   something by hand.
+3. **Turning ASC off was right for this room.** The lowest minute in five days was
+   874.9 ppm, 449 ppm above the 426 ppm outdoor reference [D: 874.9 − 426]. ASC
+   needs regular fresh air, and this room did not reach it once in the window.
+4. **CO2 tended to fall around furnace cycles, and these data cannot say why.**
+   See [The furnace](#the-furnace).
+5. **No firmware or configuration change follows from this.** The explanations
+   below are still models, and a model does not justify changing a running node.
+
+### The node
+
+| Check | Result |
+|---|---|
+| Resets | 0. Uptime reached 401,944 s with no drop [M] |
+| Fault | CO2 Sensor Fault never on, and CO2 Stale Reboots stayed 0 [M: recorder] |
+| CO2 (2 s) rows | 198,331 of 200,970 expected, 98.7 % [D: 111.65 h × 1,800 per h]. A lower bound: HA records only changes, so a repeated reading leaves no row |
+| Gaps over 4 s | 9. The longest, 218, 137 and 29 s, are HA restarts [M: logbook, Oct 28 22:55, Oct 29 22:04, Oct 31 11:44]. The other six are 13 s or shorter |
+| CO2 as a mean | CO2 matches the mean of the previous 60 s of CO2 (2 s): error sd 0.09 ppm, largest 1.08 ppm [D: n = 1,336] |
+| Reading noise | 1.04 ppm from one 2 s reading to the next [D: sd of the differences / √2, n = 198,250]. A floor, not the accuracy: neighbouring readings need not be independent |
+| WiFi | −30 to −19 dBm, median −21 [M: forward-filled on a 60 s grid, n = 6,700] |
+| Free heap | Median by quarter of the run: 203,604, 203,608, 203,568, 203,568 B [M: forward-filled, n = 6,699]. No leak visible over a run this short |
+| Loop time | Median 24 ms in every quarter. The 281 ms maximum was at boot [M] |
+| SCD30 temperature | 9.54 °F above the upstairs thermostat, sd 0.35 [D: n = 1,219, from 10 h after boot]. Dew points 1.23 °F apart, sd 0.45 [D]. The thermostat is not in the bedroom, so this shows the offset is steady, not how large it is |
+
+### The room
+
+One-minute means, n = 6,695 [M]: 874.9 to 1,313.5 ppm, mean 1,074.2, median
+1,075.4. Above 1,000 ppm: 4,597, or 68.7 % [D]. Above 1,150 ppm: 2,042, or 30.5 %
+[D]. Above 1,500 ppm: 0.
+
+| Night, 23:00 to 06:00 | n | Mean, ppm | Lowest | Highest | Highest 2 h mean |
+|---|---|---|---|---|---|
+| Oct 27-28 | 419 | 1,137 | 975 | 1,188 | 1,173 |
+| Oct 28-29 | 420 | 1,135 | 1,063 | 1,176 | 1,160 |
+| Oct 29-30 | 420 | 1,206 | 1,127 | 1,283 | 1,250 |
+| Oct 30-31 | 420 | 1,203 | 1,084 | 1,245 | 1,226 |
+| Oct 31-Nov 1 | 480 | 1,042 | 951 | 1,079 | 1,068 |
+
+The last night is 8 h because the clocks went back. The run's highest minute,
+1,313.5 ppm, came at 06:37 on Oct 30, just after that night's window closed.
+
+### The furnace
+
+On four of the five mornings a long furnace cycle started between 05:06 and 05:32,
+and CO2 was 95 to 139 ppm lower 15 min after it ended [M]. The fifth morning had no
+cycle: CO2 kept climbing until 06:37 and set the run's highest minute [M]. That
+morning sits inside the longest span without a cycle, 39.07 h from Oct 29 06:58 to
+Oct 30 22:02, when CO2 averaged 1,150 ppm [M: n = 2,344].
+
+| Day | CO2 mean, ppm | Furnace cycles | Furnace minutes | Outdoor mean, °F |
+|---|---|---|---|---|
+| Oct 28 | 1,009 | 9 | 117 | 42.2 |
+| Oct 29 | 1,103 | 2 | 51 | 50.7 |
+| Oct 30 | 1,191 | 1 | 10 | 55.0 |
+| Oct 31 | 1,029 | 6 | 87 | 46.8 |
+
+Across all 25 cycles, CO2 moved by a median of −10.2 ppm in the 25 min from the
+start of a cycle, against +3.1 ppm in 196 non-overlapping 25 min windows clear of
+the furnace. The difference is −13.3 ppm, one-sided permutation p = 0.0027 [D:
+20,000 permutations]. That test treats the windows as independent and does not
+hold time of day constant, and 10 of the 25 cycles started between 04:00 and
+08:00 [M]. Nor was the fall prompt or uniform: 7 cycles ended the 25 min higher
+than they began, and the longest, 52.5 min on Nov 1, was 47 ppm up at 25 min and
+95 ppm down 15 min after it ended [M].
+
+So the link held in this window, but its cause is not known. Three explanations
+fit [I]: the blower mixes bedroom air with the rest of the house; warm days need
+less furnace and also push less air through the house; or people get up at about
+the same hour. Four days cannot separate them, because furnace minutes and outdoor
+temperature move together. The family-room node can test the first: blower mixing
+would pull the two rooms together during a cycle [I: falsified if the gap between
+them holds through cycles].
+
+### What this does not establish
+
+- **The absolute level.** The only reference is the porch FRC of 2026-10-27, at
+  an assumed 426 ppm [I], and nothing has checked the node since: no second
+  instrument and no outdoor re-check [M]. If the porch air was above 426 ppm, the
+  FRC set the node low, so that error would make these readings too low, not too
+  high [I: falsified by a reference meter reading below the node]. Accuracy is
+  ±(30 ppm + 3 %) [S: SCD30 Interface Description v1.0-D1, p1], or ±60 ppm at
+  1,000 and ±65 ppm at 1,150 [D].
+- **Who was in the room.** Who slept there and whether the door was open were not
+  logged night by night, so the differences between nights have no explanation
+  here.
+- **The air at the bed.** The node sits on a dresser about 10 ft from the bed
+  [Bill]. These are readings at one point in the room, not in the breathing zone.
+- **The rest of the house.** Whether the bedroom is worse than other rooms needs
+  the family-room node.
+- **Winter.** Five days in late October say nothing about January, when the
+  furnace runs far more and the windows stay shut.
 
 ## Repository layout
 
@@ -75,7 +197,8 @@ three such moments, named in the header of the common file:
 esphome/    Node firmware: co2-node-common.yaml plus one thin file per node
 harness/    Host-side simulation of the watchdog lambdas, and its fault injector
 hardware/   KiCad 10 board (fit-check model) and footprint library
-  CO2 Monitor_*.png   The two 3D renders above
+  CO2 Monitor_*.png   The two 3D renders in Fit in the enclosure
+  as-built/           Photographs of the bedroom node, and the field-results chart
   3d/                 Vendor 3D models: SCD30, XIAO ESP32-C3, USB-C plug
   adafruit-scd30/     Adafruit's EAGLE files for the SCD30 breakout, with their licence
   Seeed_XIAO_ESP32C3/ KiCad redraw of the XIAO's schematic, for net checking
@@ -91,7 +214,8 @@ docs/       Vendor primary sources: Hammond drawing, Sensirion and Adafruit
 | MCU | Seeed XIAO ESP32-C3 |
 | Sensor | Adafruit SCD30 breakout (PID 4867), I2C address `0x61`. The only device on the bus |
 | I2C | SDA GPIO6 (D4), SCL GPIO7 (D5), **50 kHz** [S: `docs/adafruit-scd30.pdf` p15-16] |
-| Status LED | GPIO20 (D7). Kept dark: the box is opaque |
+| Status LED | GPIO20 (D7), the carrier's green LED. From 1.1 it is the fault light: a 5 Hz strobe on CO2 Sensor Fault, dark otherwise. The vent slots let it show |
+| Antenna | Seeed FPC antenna on the XIAO's u.FL socket, marked "XIAO FPC Antenna A-01" [M: photo] |
 | Enclosure | Hammond 1551V4, 80 × 80 × 20.3 mm ABS [S: `docs/1551V4BK.pdf`] |
 
 ### PH1: sensor header
@@ -132,6 +256,35 @@ models:
   XIAO has to go in before the XIAO does.
 - The floor has a 1.0 mm recess at its centre, ±7.53 mm [M: base STEP]. Keep
   standoffs off it.
+
+**As built:** the cover closes over both boards [M: photos below]. That shows the
+stack fits, not how much clearance is left, and the standoff height used is not
+recorded here yet. The USB cable leaves through a notch at a corner of the vent
+slots, which the model does not show.
+
+![Fit-check model, cover off](hardware/CO2%20Monitor_OPEN.png)
+![Fit-check model, cover lifted](hardware/CO2%20Monitor_EXPLODED.png)
+
+*KiCad 3D renders of the fit-check model in `hardware/`, not photographs. The
+model's standoff height is not final.*
+
+### As built
+
+<p align="center">
+  <img src="hardware/as-built/open-both-boards.jpg" width="49%" alt="Cover off: the carrier with the XIAO on the left and the SCD30 breakout on the right, with the antenna looped between them">
+  <img src="hardware/as-built/open-xiao-side.jpg" width="49%" alt="Cover off, from the XIAO's end: the USB-C plug, the antenna on its u.FL socket, and the QT cable in PH1">
+</p>
+<p align="center">
+  <img src="hardware/as-built/closed-cable-exit.jpg" width="35%" alt="Closed: a white braided USB cable leaves through a notch at a corner of the vent slots">
+  <img src="hardware/as-built/closed-vent-side.jpg" width="62%" alt="Closed, from the side: small red and green lights show through the vent slots">
+</p>
+
+*Top row: 2026-10-27. Bottom row: 2026-11-01 [M: photo EXIF].*
+
+**Steady green through the slots is not a fault.** It is the breakout's own LED,
+and the steady red is the XIAO's, marked CH. Both are lit in the open photos while
+the carrier's LED is dark. The carrier's LED is the fault light. It is also green,
+but it strobes at 5 Hz.
 
 ## Firmware
 
