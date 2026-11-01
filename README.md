@@ -141,9 +141,9 @@ One-minute means, n = 6,695 [M]: 874.9 to 1,313.5 ppm, mean 1,074.2, median
 The last night is 8 h because the clocks went back. The run's highest minute,
 1,313.5 ppm, came at 06:37 on Oct 30, just after that night's window closed.
 
-Two adults slept in the room every night, usually with the light off by 22:00 and
-awake between 06:00 and 07:00 [Bill]. So head count does not explain the 164 ppm
-between the lowest and highest night means [D: 1,206 − 1,042].
+Two adults slept in the room every night, and the door stayed open [Bill]. So
+neither head count nor the door explains the 164 ppm between the lowest and highest
+night means [D: 1,206 − 1,042].
 
 ### The furnace
 
@@ -156,9 +156,10 @@ the four furnace mornings against 138 on Oct 30, and the steepest 10 min was 70 
 173 ppm against 65 [M: window chosen after seeing the data]. One morning without a
 cycle is too few to test that difference.
 
-The usual waking hour splits the mornings. Oct 30's peak falls inside it, so getting
-up fits that morning. It does not fit three of the others, which were already
-falling before 06:00, each with a cycle running [D: 1 min means]:
+Nobody is usually up before 06:00 [Bill], and that splits the mornings. Oct 30's
+peak came after it, so getting up fits that morning. It does not fit three of the
+others, which were already falling before 06:00, each with a cycle running [D: 1
+min means]:
 
 | Morning | Cycles between 05:00 and 06:00 | CO2 change, 05:00 to 06:00, ppm |
 |---|---|---|
@@ -219,8 +220,8 @@ them holds through cycles].
   high [I: falsified by a reference meter reading below the node]. Accuracy is
   ±(30 ppm + 3 %) [S: SCD30 Interface Description v1.0-D1, p1], or ±60 ppm at
   1,000 and ±65 ppm at 1,150 [D].
-- **The door.** Whether it was open was not logged night by night, so the
-  differences between nights have no explanation here.
+- **The differences between nights.** Head count and the door were the same
+  every night, so the 164 ppm has no explanation here.
 - **The air at the bed.** The node sits on a dresser about 10 ft from the bed
   [Bill]. These are readings at one point in the room, not in the breathing zone.
 - **The rest of the house.** Whether the bedroom is worse than other rooms needs
@@ -296,8 +297,8 @@ models:
   standoffs off it.
 
 **As built:** the cover closes over both boards [M: photos below], on 3 mm standoffs
-[Bill]. That shows the stack fits. The 3 mm clearances above are calculated, not
-measured. The USB cable leaves through a notch at a corner of the vent slots, which
+with the XIAO on a 2.5 mm pin header [Bill]. That shows the stack fits. The 3 mm
+clearances above are calculated, not measured. The USB cable leaves through a notch at a corner of the vent slots, which
 the model does not show.
 
 ![Fit-check model, cover off](hardware/CO2%20Monitor_OPEN.png)
