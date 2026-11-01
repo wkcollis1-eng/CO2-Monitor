@@ -103,8 +103,9 @@ not in this repository].*
 3. **Turning ASC off was right for this room.** The lowest minute in five days was
    874.9 ppm, 449 ppm above the 426 ppm outdoor reference [D: 874.9 − 426]. ASC
    needs regular fresh air, and this room did not reach it once in the window.
-4. **CO2 fell on all five mornings, with or without the furnace, and these data cannot say
-   whether the furnace adds to that.** See [The furnace](#the-furnace).
+4. **CO2 fell on all five mornings, and no single cause covers them.** Oct 30 fell
+   with no furnace running, and three other mornings were falling before the usual
+   waking hour. See [The furnace](#the-furnace).
 5. **No firmware or configuration change follows from this.** The explanations
    below are still models, and a model does not justify changing a running node.
 
@@ -140,6 +141,10 @@ One-minute means, n = 6,695 [M]: 874.9 to 1,313.5 ppm, mean 1,074.2, median
 The last night is 8 h because the clocks went back. The run's highest minute,
 1,313.5 ppm, came at 06:37 on Oct 30, just after that night's window closed.
 
+Two adults slept in the room every night, usually with the light off by 22:00 and
+awake between 06:00 and 07:00 [Bill]. So head count does not explain the 164 ppm
+between the lowest and highest night means [D: 1,206 − 1,042].
+
 ### The furnace
 
 On four of the five mornings a long furnace cycle started between 05:06 and 05:32,
@@ -150,6 +155,23 @@ the furnace. Between 04:00 and 09:00 the fall from peak to low was 155 to 278 pp
 the four furnace mornings against 138 on Oct 30, and the steepest 10 min was 70 to
 173 ppm against 65 [M: window chosen after seeing the data]. One morning without a
 cycle is too few to test that difference.
+
+The usual waking hour splits the mornings. Oct 30's peak falls inside it, so getting
+up fits that morning. It does not fit three of the others, which were already
+falling before 06:00, each with a cycle running [D: 1 min means]:
+
+| Morning | Cycles between 05:00 and 06:00 | CO2 change, 05:00 to 06:00, ppm |
+|---|---|---|
+| Oct 28 | 05:06-05:31, 05:46-05:58 | −122 |
+| Oct 29 | 05:32-05:54 | −77 |
+| Oct 30 | None | +33 |
+| Oct 31 | 05:31-05:56 | −102 |
+| Nov 1 | 05:30-06:22 | +44 |
+
+Nov 1 does not decide it. CO2 rose through the first 26 min of that cycle and fell
+from 05:56, on the first morning after the clocks went back, when the usual hour may
+have moved on the clock. The waking hour is the usual one, not a log of these
+mornings, so this is a pattern and not a proof.
 
 Oct 30 sits inside the longest span without a cycle, 39.07 h from Oct 29 06:58 to
 Oct 30 22:02, when CO2 averaged 1,150 ppm [M: n = 2,344].
@@ -170,13 +192,20 @@ result: p = 0.027 shuffling within 4 h blocks of the day, and p = 0.054 within 2
 blocks [D: 20,000 permutations each]. All three treat the windows as independent,
 which makes them look stronger than they are. Nor was the fall prompt or uniform: 7
 cycles ended the 25 min higher than they began, and the longest, 52.5 min on Nov 1,
-was 47 ppm up at 25 min and 95 ppm down 15 min after it ended [M].
+was 47 ppm up at 25 min and 95 ppm down 15 min after it ended [M]. The gap shows
+before waking, not after: from 04:00 to 06:00 the cycles' median was −31.5 ppm
+(n = 6) against +6.1 ppm for the clear windows (n = 10), and from 06:00 to 08:00 it
+was −6.6 ppm (n = 4) against −9.2 ppm (n = 8) [D: 2 h blocks, read after seeing the
+data, not tested].
 
-So a furnace effect is possible but not shown. Three explanations fit [I]: the
-blower mixes bedroom air with the rest of the house; warm days need less furnace
-and also push less air through the house; or people get up at about the same hour.
-Only the last also covers the fall on Oct 30. Four days cannot separate them,
-because furnace minutes and outdoor temperature move together. The family-room node
+So a furnace effect is possible but not shown. Three explanations fit parts of
+this [I]: the blower mixes bedroom air with the rest of the house; warm days need
+less furnace and also push less air through the house; or people get up at about
+the same hour. The blower covers the falls before 06:00 but not Oct 30, and getting
+up covers Oct 30 but not those falls, so both may act [I: falsified by a morning
+that falls before 06:00 with no cycle running and nobody up]. Four days cannot
+separate them, because furnace minutes and outdoor temperature move together. The
+family-room node
 can test the first: blower mixing
 would pull the two rooms together during a cycle [I: falsified if the gap between
 them holds through cycles].
@@ -190,9 +219,8 @@ them holds through cycles].
   high [I: falsified by a reference meter reading below the node]. Accuracy is
   ±(30 ppm + 3 %) [S: SCD30 Interface Description v1.0-D1, p1], or ±60 ppm at
   1,000 and ±65 ppm at 1,150 [D].
-- **Who was in the room.** Who slept there, whether the door was open and when
-  anyone got up were not logged, so neither the differences between nights nor the
-  morning fall have an explanation here.
+- **The door.** Whether it was open was not logged night by night, so the
+  differences between nights have no explanation here.
 - **The air at the bed.** The node sits on a dresser about 10 ft from the bed
   [Bill]. These are readings at one point in the room, not in the breathing zone.
 - **The rest of the house.** Whether the bedroom is worse than other rooms needs
@@ -258,24 +286,25 @@ models:
   SCD30 datasheet, Table 6], and the cover's moulded lettering stands 0.20 mm
   [M: cover STEP], so the worst case is a clash under the lettering. On 5 mm
   standoffs the worst case is 1.035 mm to the cover, or 0.835 mm under the
-  lettering [D: 1.035 − 0.20]. The SCD30's standoff height is the open fit
-  question.
+  lettering [D: 1.035 − 0.20]. On the 3 mm used in the build it is 3.035 mm, or
+  2.835 mm under the lettering [D: 1.035 + 2; 3.035 − 0.20].
 - **The carrier** on 6 mm standoffs: a XIAO soldered in on pin headers leaves
-  0.95 mm [D]. A socketed XIAO does not fit. The mounting screw under the
-  XIAO has to go in before the XIAO does.
+  0.95 mm [D], and on 3 mm it leaves 3.95 mm [D: 0.95 + 3]. A socketed XIAO does
+  not fit on either. The mounting screw under the XIAO has to go in before the
+  XIAO does.
 - The floor has a 1.0 mm recess at its centre, ±7.53 mm [M: base STEP]. Keep
   standoffs off it.
 
-**As built:** the cover closes over both boards [M: photos below]. That shows the
-stack fits, not how much clearance is left, and the standoff height used is not
-recorded here yet. The USB cable leaves through a notch at a corner of the vent
-slots, which the model does not show.
+**As built:** the cover closes over both boards [M: photos below], on 3 mm standoffs
+[Bill]. That shows the stack fits. The 3 mm clearances above are calculated, not
+measured. The USB cable leaves through a notch at a corner of the vent slots, which
+the model does not show.
 
 ![Fit-check model, cover off](hardware/CO2%20Monitor_OPEN.png)
 ![Fit-check model, cover lifted](hardware/CO2%20Monitor_EXPLODED.png)
 
-*KiCad 3D renders of the fit-check model in `hardware/`, not photographs. The
-model's standoff height is not final.*
+*KiCad 3D renders of the fit-check model in `hardware/`, not photographs. They do
+not record the as-built standoff height, which is the 3 mm above.*
 
 ### As built
 
